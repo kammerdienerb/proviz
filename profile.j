@@ -7,25 +7,26 @@ define-class Interval
         fn (&self &type &sample)
             append
                 get-or-insert (&self 'events-by-type) &type (list)
-                ` &sample
+                move &sample
 
 new-interval =
-    fn (start-time end-time)
+    fn (&start-time &end-time)
         interval = (new-instance Interval)
-        (interval 'start-time) = start-time
-        (interval 'end-time)   = end-time
+        (interval 'start-time) = &start-time
+        (interval 'end-time)   = &end-time
         interval
 
 define-class Profile
+    'strings   : (object)
     'intervals : (list)
 
     'push-interval :
-        fn (&self start-time end-time)
+        fn (&self &start-time &end-time)
             append (&self 'intervals)
-                new-interval start-time end-time
+                new-interval &start-time &end-time
 
     'push-event :
-        fn (&self type sample)
+        fn (&self &type &sample)
             &intervals = (&self 'intervals)
             &last-interval = (&intervals ((len &intervals) - 1))
-            &last-interval @ ('push-event type sample)
+            &last-interval @ ('push-event &type &sample)

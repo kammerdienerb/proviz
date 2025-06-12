@@ -1,13 +1,13 @@
 log =
-    fn (type message)
+    fn (&type &message)
         prefix = ""
-        match type
+        match &type
             'error : (prefix = "WARNING: ")
             'warn  : (prefix = "ERROR:   ")
             'info  : (prefix = "INFO:    ")
 
         print prefix
-        println message
+        println &message
 
 log-fmt =
     fn (&format-string &fmt-args)
@@ -16,11 +16,11 @@ log-fmt =
         ((fmt-call))
 
 elog =
-    fn (format-string ...)
-        log 'error (log-fmt format-string ...)
+    fn (&format-string ...)
+        log 'error (log-fmt &format-string ...)
 wlog =
-    fn (format-string ...)
-        log 'warn (log-fmt format-string ...)
+    fn (&format-string ...)
+        log 'warn (log-fmt &format-string ...)
 ilog =
-    fn (format-string ...)
-        log 'info (log-fmt format-string ...)
+    fn (&format-string ...)
+        log 'info (log-fmt &format-string ...)

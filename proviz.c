@@ -10,6 +10,7 @@
 #define JULIE_IMPL
 #include "julie.h"
 
+#include "options.j.h"
 #include "log.j.h"
 #include "profile.j.h"
 #include "parsers.j.h"
@@ -266,6 +267,8 @@ int main(int argc, char **argv) {
 
     julie_set_cur_file(interp, julie_get_string_id(interp, "log.j"));
     julie_parse(interp, (const char*)log_j, log_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "options.j"));
+    julie_parse(interp, (const char*)options_j, options_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "profile.j"));
     julie_parse(interp, (const char*)profile_j, profile_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "parsers.j"));

@@ -1,7 +1,8 @@
 current-view := nil
+profile      := nil
 
 @on-init =
-    fn (rows cols)
+    fn (&rows &cols)
 
         current-view :=
             new-view
@@ -9,7 +10,10 @@ current-view := nil
                 'rows : rows
                 'cols : cols
 
-        println current-view
-        println parsers
+        profile := (new-instance Profile)
+
+        f = (fopen-rd ((argv) 1))
+
+        (parsers "iaprof") profile f current-view
 
         @term:exit
