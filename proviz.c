@@ -10,6 +10,11 @@
 #define JULIE_IMPL
 #include "julie.h"
 
+#include "log.j.h"
+#include "profile.j.h"
+#include "parsers.j.h"
+#include "iaprof_parser.j.h"
+#include "view.j.h"
 #include "main.j.h"
 
 #define TERM_BLACK                   "\033[0;30m"
@@ -259,6 +264,16 @@ int main(int argc, char **argv) {
 
     julie_set_argv(interp, argc, argv);
 
+    julie_set_cur_file(interp, julie_get_string_id(interp, "log.j"));
+    julie_parse(interp, (const char*)log_j, log_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "profile.j"));
+    julie_parse(interp, (const char*)profile_j, profile_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "parsers.j"));
+    julie_parse(interp, (const char*)parsers_j, parsers_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "iaprof_parser.j"));
+    julie_parse(interp, (const char*)iaprof_parser_j, iaprof_parser_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "view.j"));
+    julie_parse(interp, (const char*)view_j, view_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "main.j"));
     julie_parse(interp, (const char*)main_j, main_j_len);
 
@@ -302,6 +317,7 @@ static void on_julie_output(const char *string, int length) {
         julie_file = fopen("/tmp/proviz.log", "w");
     }
     fprintf(julie_file, "%s", string);
+    fflush(julie_file);
 }
 
 static void on_julie_error(Julie_Error_Info *info) {
