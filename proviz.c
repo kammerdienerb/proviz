@@ -15,6 +15,8 @@
 #include "profile.j.h"
 #include "parsers.j.h"
 #include "iaprof_parser.j.h"
+#include "sso_heatmap.j.h"
+#include "flamegraph.j.h"
 #include "view.j.h"
 #include "main.j.h"
 
@@ -248,9 +250,6 @@ int main(int argc, char **argv) {
     int          n;
     int          input[32];
     int          i;
-    char         **code;
-    int          *len;
-    char         **name;
 
     interp = julie_init_interp();
     julie_set_error_callback(interp, on_julie_error);
@@ -277,6 +276,10 @@ int main(int argc, char **argv) {
     julie_parse(interp, (const char*)iaprof_parser_j, iaprof_parser_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "view.j"));
     julie_parse(interp, (const char*)view_j, view_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "sso_heatmap.j"));
+    julie_parse(interp, (const char*)sso_heatmap_j, sso_heatmap_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "flamegraph.j"));
+    julie_parse(interp, (const char*)flamegraph_j, flamegraph_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "main.j"));
     julie_parse(interp, (const char*)main_j, main_j_len);
 

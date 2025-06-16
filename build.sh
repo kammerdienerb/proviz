@@ -10,7 +10,8 @@ for f in *.j; do
     xxd -n $(basename ${f} ".j")_j -i ${f} > ${f}.h || exit $?
 done
 
-# CFLAGS="-g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O0"
+# ASAN="-fsanitize=address"
+# CFLAGS="-Wall -Werror -pedantic -g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O0 ${ASAN}"
 CFLAGS="-g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O3 -march=native -mtune=native"
 
 LDFLAGS="-lm -ldl"
