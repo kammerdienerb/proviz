@@ -17,11 +17,15 @@ parse-iaprof =
             split-line = (splits &line "\t")
             match (split-line 0)
                 "e"
-                    &profile @
-                        'push-event "EU Stall"
-                            object
-                                'count : (parse-int (split-line 4))
-                                'stack : (split-line 1)
+#                     &profile @
+#                         'push-event "EU Stall"
+#                             object
+#                                 'count : (parse-int (split-line 4))
+#                                 'stack : (split-line 1)
+                    append &stall-list
+                        object
+                            'count : (parse-int (split-line 4))
+                            'stack : (split-line 1)
 
                 "string"
                     &strings <- ((split-line 1) : (split-line 2))
@@ -44,6 +48,10 @@ parse-iaprof =
                                     cur-time + (&interval-time * i)
                                     cur-time + (&interval-time * (i + 1))
                         cur-time += (&interval-time * num-elapsed)
+
+                    if (is-bound &stall-list)
+                        unref &stall-list
+                    &stall-list = (get-or-insert ((last (&profile 'intervals)) 'events-by-type) "EU Stall" (list))
 
             ln += 1
             if ((ln % update) == 0)
