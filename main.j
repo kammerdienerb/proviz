@@ -74,7 +74,7 @@ define-class Heatmap-View-Input-Handler
 
         f = (fopen-rd ((argv) 1))
 
-        (parsers "iaprof") profile f &current-view
+        parse "iaprof" profile f &current-view
 
         &current-view @
             'add-widget "heatmap"

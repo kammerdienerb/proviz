@@ -41,8 +41,7 @@ define-class SSO-Heatmap
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
                         count += (&sample 'count)
-                    if (count > largest-count)
-                        largest-count = count
+                    largest-count = (max largest-count count)
                 &interval <- ('eustall-count : count)
 
             &height = (map 'height)
@@ -50,9 +49,9 @@ define-class SSO-Heatmap
             row = (&height + 1)
             col = 1
             foreach &interval (&profile 'intervals)
-                count = (&interval 'eustall-count)
-                value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
-                color = (select (value == 0.0) 0x000000 ((sint ((value * 225) + 30)) << 16))
+                &count = (&interval 'eustall-count)
+                value  = (select (largest-count == 0) 0.0 ((float &count) / largest-count))
+                color  = (select (value == 0.0) 0x000000 ((sint ((value * 225) + 30)) << 16))
 
                 append (map 'blips)
                     (SSO-Heatmap-Blip 'new) row col color

@@ -29,7 +29,7 @@ define-class Flame-Graph-Frame
             elif (label == "-")
                 type = 'divider
 
-            (frame 'label) = label
+            (frame 'label) = (move label)
             (frame 'type)  = type
             (frame 'color) = ((Flame-Graph-Frame 'get-color) type (rand))
 
@@ -56,7 +56,7 @@ define-class Flame-Graph-Frame
                     (&children label) @ ('sort)
                     append sorted-children-labels (label : ((&children label) 'count))
 
-                sorted-children-labels = (sorted sorted-children-labels (fn (a b) ((a 1) > (b 1))))
+                sorted-children-labels = (sorted (move sorted-children-labels) (fn (a b) ((a 1) > (b 1))))
 
                 foreach &pair sorted-children-labels
                     append (&self 'sorted-children-labels) (move (&pair 0))

@@ -1324,6 +1324,9 @@ static Julie_Status j_term_exit(Julie_Interp *interp, Julie_Value *expr, unsigne
 
     printf(TERM_RESET TERM_CURSOR_HOME TERM_CLEAR_SCREEN);
     restore_term();
+
+/*     julie_free(interp); */
+
     exit(0);
 
     *result = julie_nil_value(interp);
