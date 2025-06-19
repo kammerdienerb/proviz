@@ -25,8 +25,8 @@ define-class Thief-Scope
     'height     : 0
     'blips      : (list)
     'state      : 'no-selection
-    'anchor-idx : nil
-    'tail-idx   : nil
+    'anchor-col : nil
+    'tail-col   : nil
 
 
     'new :
@@ -40,8 +40,6 @@ define-class Thief-Scope
                             stacks <- (((&profile 'strings) (&sample 'stack)) : 1)
 
             stacks = (sorted (keys stacks))
-
-            println stacks
 
             leaves = (list)
 
@@ -99,32 +97,36 @@ define-class Thief-Scope
         fn (&self &row &col)
             ((&col - 1) * (&self 'height)) + (&row - 2)
 
-    'set-blip-color-mask :
-        fn (&self &view &idx &mask)
-            &blip = ((&self 'blips) &idx)
-            (&blip 'color) |= &mask
-            &blip @ ('paint &view)
+    'set-col-color-mask :
+        fn (&self &view &col &mask)
+            repeat i (&self 'height)
+                idx = (((&col - 1) * (&self 'height)) + i)
+                &blip = ((&self 'blips) idx)
+                (&blip 'color) |= &mask
+                &blip @ ('paint &view)
 
-    'reset-blip-color :
-        fn (&self &view &idx)
-            &blip = ((&self 'blips) &idx)
-            (&blip 'color) &= 0xffff00
-            &blip @ ('paint &view)
+    'reset-col-color :
+        fn (&self &view &col)
+            repeat i (&self 'height)
+                idx = (((&col - 1) * (&self 'height)) + i)
+                &blip = ((&self 'blips) idx)
+                (&blip 'color) = 0x00ffff
+                &blip @ ('paint &view)
 
     'get-selected-range :
         fn (&self)
-            &a = (&self 'anchor-idx)
-            &t = (&self 'tail-idx)
+            &a = (&self 'anchor-col)
+            &t = (&self 'tail-col)
             select (&a <= &t)
-                &a : ((&t - &a) + 1)
-                &t : ((&a - &t) + 1)
+                (&a - 1) : ((&t - &a) + 1)
+                (&t - 1) : ((&a - &t) + 1)
 
     'reset-selection :
         fn (&self &view)
             match (&self 'state)
                 'anchor-hover
-                    &self @ ('reset-blip-color &view (&self 'anchor-idx))
-                    (&self 'anchor-idx) = nil
+                    &self @ ('reset-col-color &view (&self 'anchor-col))
+                    (&self 'anchor-col) = nil
 
                 'tail-hover
                     range  = (&self @ ('get-selected-range))
@@ -132,11 +134,11 @@ define-class Thief-Scope
                     length = (range 1)
 
                     repeat i length
-                        i += start
-                        &self @ ('reset-blip-color &view i)
+                        i += (start + 1)
+                        &self @ ('reset-col-color &view i)
 
-                    (&self 'anchor-idx) = nil
-                    (&self 'tail-idx) = nil
+                    (&self 'anchor-col) = nil
+                    (&self 'tail-col) = nil
 
             (&self 'state) = 'no-selection
 
@@ -153,51 +155,40 @@ define-class Thief-Scope
                     @term:set-cell-char 1 c char
                     c += 1
 
-                @term:flush
-
-
                 idx = (&self @ ('coord-to-blip-idx &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
                         'no-selection
-                            (&self 'anchor-idx) = idx
-                            &self @ ('set-blip-color-mask &view idx 0x0000b0)
+                            (&self 'anchor-col) = &col
+                            &self @ ('set-col-color-mask &view &col 0x0000b0)
 
                             (&self 'state) = 'anchor-hover
 
                         'anchor-hover
-                            &self @ ('reset-blip-color &view (&self 'anchor-idx))
-                            &self @ ('set-blip-color-mask &view idx 0x0000b0)
-                            (&self 'anchor-idx) = idx
+                            &self @ ('reset-col-color &view (&self 'anchor-col))
+                            &self @ ('set-col-color-mask &view &col 0x0000b0)
+                            (&self 'anchor-col) = &col
 
                         'tail-hover
                             range  = (&self @ ('get-selected-range))
                             start  = (range 0)
                             length = (range 1)
 
-                            if (length > 2)
-                                repeat i (length - 2)
-                                    i += (start + 1)
-                                    &self @ ('reset-blip-color &view i)
+                            repeat i length
+                                i += (start + 1)
+                                &self @ ('reset-col-color &view i)
 
-                            if ((&self 'tail-idx) != (&self 'anchor-idx))
-                                &self @ ('reset-blip-color &view (&self 'tail-idx))
-
-                            if (idx != (&self 'anchor-idx))
-                                &self @ ('set-blip-color-mask &view idx 0x00007f)
-
-                            (&self 'tail-idx) = idx
+                            (&self 'tail-col) = &col
 
                             range  = (&self @ ('get-selected-range))
                             start  = (range 0)
                             length = (range 1)
 
-                            if (length > 2)
-                                repeat i (length - 2)
-                                    i += (start + 1)
-                                    &self @ ('set-blip-color-mask &view i 0x00007f)
+                            repeat i length
+                                i += (start + 1)
+                                &self @ ('set-col-color-mask &view i 0x00007f)
 
-                    @term:flush
+                @term:flush
             response
 
     'mouse-click :
@@ -208,21 +199,21 @@ define-class Thief-Scope
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
                         'no-selection
-                            (&self 'anchor-idx) = idx
-                            (&self 'tail-idx) = idx
-                            &self @ ('set-blip-color-mask &view idx 0x0000ff)
+                            (&self 'anchor-col) = &col
+                            (&self 'tail-col) = &col
+                            &self @ ('set-col-color-mask &view &col 0x0000ff)
 
                             (&self 'state) = 'tail-hover
 
                         'anchor-hover
-                            (&self 'anchor-idx) = idx
-                            (&self 'tail-idx)   = idx
-                            &self @ ('set-blip-color-mask &view idx 0x0000ff)
+                            (&self 'anchor-col) = &col
+                            (&self 'tail-col)   = &col
+                            &self @ ('set-col-color-mask &view &col 0x0000ff)
 
                             (&self 'state) = 'tail-hover
 
                         'tail-hover
-                            (&self 'tail-idx) = idx
+                            (&self 'tail-col) = &col
                             response = 'range-selected
 
                     @term:flush
