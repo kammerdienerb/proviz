@@ -1,4 +1,4 @@
-define-class SSO-Heatmap-Blip
+define-class Thief-Scope-Blip
     'row   : 0
     'col   : 0
     'color : 0x000000
@@ -6,7 +6,7 @@ define-class SSO-Heatmap-Blip
 
     'new :
         fn (&row &col &color)
-            blip = (new-instance SSO-Heatmap-Blip)
+            blip = (new-instance Thief-Scope-Blip)
 
             (blip 'row)   = &row
             (blip 'col)   = &col
@@ -21,7 +21,7 @@ define-class SSO-Heatmap-Blip
                 (&self 'col)
                 (&self 'color)
 
-define-class SSO-Heatmap
+define-class Thief-Scope
     'height     : 0
     'blips      : (list)
     'state      : 'no-selection
@@ -31,36 +31,62 @@ define-class SSO-Heatmap
 
     'new :
         fn (&profile &event)
-            map = (new-instance SSO-Heatmap)
+            stacks = (object)
 
-            (map 'height) = (sint (1.0 / (options 'interval-time)))
-
-            largest-count = 0
             foreach &interval (&profile 'intervals)
-                count = 0
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
-                        count += (&sample 'count)
-                    largest-count = (max largest-count count)
-                &interval <- ('eustall-count : count)
+                        if ('stack in &sample)
+                            stacks <- (((&profile 'strings) (&sample 'stack)) : 1)
+
+            stacks = (sorted (keys stacks))
+
+            println stacks
+
+            leaves = (list)
+
+            foreach stack stacks
+                leaf = (last (split stack ";"))
+#                 if (not (startswith leaf "0x"))
+                if (not (leaf in leaves))
+                    append leaves leaf
+
+            map = (new-instance Thief-Scope)
+
+            (map 'height) = (len leaves)
+
+            foreach &interval (&profile 'intervals)
+                total = 0
+                if (&event in (&interval 'events-by-type))
+                    foreach &sample ((&interval 'events-by-type) &event)
+                        total += (&sample 'count)
+                &interval <- ('count : total)
 
             &height = (map 'height)
 
-            row = (&height + 1)
             col = 1
             foreach &interval (&profile 'intervals)
-                &count = (&interval 'eustall-count)
-                value  = (select (largest-count == 0) 0.0 ((float &count) / largest-count))
-                color  = (select (value == 0.0) 0x000000 ((sint ((value * 225) + 30)) << 16))
+                total = (&interval 'count)
+                row = 2
+                foreach &leaf leaves
+                    count = 0
+                    if (&event in (&interval 'events-by-type))
+                        foreach &sample ((&interval 'events-by-type) &event)
+                            leaf = (last (split ((&profile 'strings) (&sample 'stack)) ";"))
+                            if (leaf == &leaf)
+                                count += (&sample 'count)
 
-                append (map 'blips)
-                    (SSO-Heatmap-Blip 'new) row col color
+                    value  = (select (total == 0) 0.0 ((float count) / total))
+                    color  = (select (value == 0.0) 0x000000 ((sint ((value * 225) + 30)) << 16))
 
-                if (row == 2)
-                    col += 1
-                    row = (&height + 1)
-                else
-                    row -= 1
+                    append (map 'blips)
+                        (Thief-Scope-Blip 'new) row col color
+
+                    row += 1
+
+                col += 1
+
+            map <- ('leaves : leaves)
 
             move map
 
@@ -71,7 +97,7 @@ define-class SSO-Heatmap
 
     'coord-to-blip-idx :
         fn (&self &row &col)
-            ((&col - 1) * (&self 'height)) + (((&self 'height) - &row) + 1)
+            ((&col - 1) * (&self 'height)) + (&row - 2)
 
     'set-blip-color-mask :
         fn (&self &view &idx &mask)
@@ -118,6 +144,18 @@ define-class SSO-Heatmap
         fn (&self &view &row &col)
             response = nil
             if ((&row > 1) and (&row <= ((&self 'height) + 1)))
+                repeat c (&view 'width)
+                    @term:set-cell-bg   1 (c + 1) 0x000000
+                    @term:set-cell-char 1 (c + 1) " "
+                c = 1
+                foreach char (chars ((&self 'leaves) (&row - 2)))
+                    @term:set-cell-fg   1 c 0xffffff
+                    @term:set-cell-char 1 c char
+                    c += 1
+
+                @term:flush
+
+
                 idx = (&self @ ('coord-to-blip-idx &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)

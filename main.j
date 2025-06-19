@@ -54,7 +54,7 @@ define-class Heatmap-View-Input-Handler
 
                 &current-view @
                     'add-widget "flamegraph"
-                        (Flame-Graph 'new) profile "EU Stall" (range 0) (range 1)
+                        (Flame-Graph 'new) profile (profile 'default-event) (range 0) (range 1)
 
                 &current-view @ ('paint)
 
@@ -74,11 +74,15 @@ define-class Heatmap-View-Input-Handler
 
         f = (fopen-rd ((argv) 1))
 
-        parse "iaprof" profile f &current-view
+        parse (options 'format) profile f &current-view
+
+#         &current-view @
+#             'add-widget "heatmap"
+#                 (SSO-Heatmap 'new) profile (profile 'default-event)
 
         &current-view @
             'add-widget "heatmap"
-                (SSO-Heatmap 'new) profile "EU Stall"
+                (Thief-Scope 'new) profile (profile 'default-event)
 
         &current-view @ ('paint)
 

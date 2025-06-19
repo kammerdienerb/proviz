@@ -10,8 +10,9 @@ define-class Interval
                 move &sample
 
 define-class Profile
-    'strings   : (object)
-    'intervals : (list)
+    'strings       : (object)
+    'intervals     : (list)
+    'default-event : ""
 
 
     'new :

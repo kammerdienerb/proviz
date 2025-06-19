@@ -181,7 +181,8 @@ define-class Flame-Graph
                 &interval = ((&profile 'intervals) (i + &start))
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
-                        (get-or-insert counts (&sample 'stack) 0) += (&sample 'count)
+                        if ('stack in &sample)
+                            (get-or-insert counts (&sample 'stack) 0) += (&sample 'count)
 
             # Construct the flame graph from the stacks object
             foreach stack-id counts
@@ -200,4 +201,3 @@ define-class Flame-Graph
     'paint :
         fn (&self &view)
             (&self 'base) @ ('paint (&view 'height) 1 (&view 'width))
-

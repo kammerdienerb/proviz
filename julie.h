@@ -3884,21 +3884,29 @@ static Julie_Status julie_args(Julie_Interp *interp, Julie_Value *expr, const ch
             case 'i':
                 if (JULIE_TYPE_IS_INTEGER((*ve_ptr)->type)) {
                     t = (*ve_ptr)->type;
+                } else {
+                    t = _JULIE_INTEGER;
                 }
                 break;
             case 'n':
                 if (JULIE_TYPE_IS_NUMBER((*ve_ptr)->type)) {
                     t = (*ve_ptr)->type;
+                } else {
+                    t = _JULIE_NUMBER;
                 }
                 break;
             case '#':
                 if ((*ve_ptr)->type == JULIE_LIST || (*ve_ptr)->type == JULIE_OBJECT) {
                     t = (*ve_ptr)->type;
+                } else {
+                    t = _JULIE_LIST_OR_OBJECT;
                 }
                 break;
             case 'k':
                 if (JULIE_TYPE_IS_KEYLIKE((*ve_ptr)->type)) {
                     t = (*ve_ptr)->type;
+                } else {
+                    t = _JULIE_KEYLIKE;
                 }
                 break;
             default:

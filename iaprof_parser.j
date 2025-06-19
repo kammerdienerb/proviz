@@ -9,12 +9,11 @@ parse-iaprof =
         &view @ ('loading-bar-init "Loading profile")
 
         update = (length / (&view 'width))
-        update = (length / 151)
 
         ln = 0
         cur-time = 0
         foreach &line lines
-            split-line = (splits &line "\t")
+            split-line = (split &line "\t")
             match (split-line 0)
                 "e"
 #                     &profile @
@@ -58,6 +57,8 @@ parse-iaprof =
                 &view @ ('loading-bar-update ((float ln) / length))
 
         &view @ ('loading-bar-fini)
+
+        (&profile 'default-event) = "EU Stall"
 
 
 register-parser "iaprof" (' parse-iaprof)
