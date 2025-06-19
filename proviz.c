@@ -18,7 +18,7 @@
 #include "perf_script_parser.j.h"
 #include "sso_heatmap.j.h"
 #include "flamegraph.j.h"
-#include "theif_scope.j.h"
+#include "thief_scope.j.h"
 #include "view.j.h"
 #include "main.j.h"
 
@@ -284,8 +284,8 @@ int main(int argc, char **argv) {
     julie_parse(interp, (const char*)sso_heatmap_j, sso_heatmap_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "flamegraph.j"));
     julie_parse(interp, (const char*)flamegraph_j, flamegraph_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "theif_scope.j"));
-    julie_parse(interp, (const char*)theif_scope_j, theif_scope_j_len);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "thief_scope.j"));
+    julie_parse(interp, (const char*)thief_scope_j, thief_scope_j_len);
     julie_set_cur_file(interp, julie_get_string_id(interp, "main.j"));
     julie_parse(interp, (const char*)main_j, main_j_len);
 
