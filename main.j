@@ -63,26 +63,32 @@ define-class Heatmap-View-Input-Handler
         rows := &rows
         cols := &cols
 
+        mode = ((argv) 1)
+        path = ((argv) 2)
+
         heatmap-view :=
             (View 'new) &rows &cols
-                'name          : "Flame Scope"
+                'name          : "main view"
                 'input-handler : (new-instance Heatmap-View-Input-Handler)
 
         set-view heatmap-view
 
         profile := ((Profile 'new))
 
-        f = (fopen-rd ((argv) 1))
+        f = (fopen-rd path)
 
         parse (options 'format) profile f &current-view
 
-#         &current-view @
-#             'add-widget "heatmap"
-#                 (SSO-Heatmap 'new) profile (profile 'default-event)
+        match mode
+            "flamescope"
+                &current-view @
+                    'add-widget "heatmap"
+                        (SSO-Heatmap 'new) profile (profile 'default-event)
 
-        &current-view @
-            'add-widget "heatmap"
-                (Thief-Scope 'new) profile (profile 'default-event)
+            "thief"
+                &current-view @
+                    'add-widget "heatmap"
+                        (Thief-Scope 'new) profile (profile 'default-event)
 
         &current-view @ ('paint)
 

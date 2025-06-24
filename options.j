@@ -1,4 +1,4 @@
 options :=
     object
-        'interval-time : 0.02
+        'interval-time : 0.05
         'format        : "perf-script"

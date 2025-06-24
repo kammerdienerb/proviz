@@ -54,10 +54,11 @@ parse-perf-script =
 #                             fmt "%;%" sym stack
 #                             sym
                     if (not (startswith sym "[unknown]"))
-                        stack =
-                            select (len stack)
-                                fmt "%;%" sym stack
-                                sym
+                        if (len stack)
+                            stack = (fmt "%;%" sym stack)
+                        else
+                            stack = sym
+                            leaf  = sym
             else
                 sample =
                     object
@@ -71,6 +72,7 @@ parse-perf-script =
                         stack-id = sid
                         sid += 1
                     sample <- ('stack : stack-id)
+                    sample <- ('leaf  : leaf)
                 &profile @ ('push-event event (move sample))
 
 
