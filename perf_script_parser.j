@@ -47,23 +47,23 @@ parse-perf-script =
                 else
                     matches = (&line =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
                     sym = (move (matches 2))
-#                     if (startswith sym "[unknown]")
-#                         sym = (fmt "0x%%" (matches 1) (substr sym 9 ((len sym) - 9)))
+                    if (startswith sym "[unknown]")
+                        sym = (fmt "0x%%" (matches 1) (substr sym 9 ((len sym) - 9)))
 #                     stack =
 #                         select (len stack)
 #                             fmt "%;%" sym stack
 #                             sym
-                    if (not (startswith sym "[unknown]"))
-                        if (len stack)
-                            stack = (fmt "%;%" sym stack)
-                        else
-                            stack = sym
-                            leaf  = sym
+#                     if (not (startswith sym "[unknown]"))
+                    if (len stack)
+                        stack = (fmt "%;%" sym stack)
+                    else
+                        stack = sym
+                        leaf  = sym
             else
-                sample =
-                    object
-                        'count : count
                 if (len stack)
+                    sample =
+                        object
+                            'count : count
                     stack = (fmt "%;%;%" cmd-name pid stack)
                     if (stack in stacks)
                         stack-id = (stacks stack)
@@ -73,7 +73,7 @@ parse-perf-script =
                         sid += 1
                     sample <- ('stack : stack-id)
                     sample <- ('leaf  : leaf)
-                &profile @ ('push-event event (move sample))
+                    &profile @ ('push-event event (move sample))
 
 
             ln += 1
