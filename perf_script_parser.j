@@ -46,6 +46,9 @@ parse-perf-script =
                             'stack : (&profile @ ('string-id stack))
                             'leaf  : (&profile @ ('string-id leaf))
 
+            if (((++ ln) % update) == 0)
+                &view @ ('loading-bar-update ((float ln) / length))
+
 looks-like-perf-script =
     fn (&file)
         or
