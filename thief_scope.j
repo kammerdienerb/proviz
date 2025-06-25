@@ -68,7 +68,7 @@ define-class Thief-Scope
 
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
-                        ((&interval 'count-by-leaf) (&sample 'leaf)) += (&sample 'count)
+                        ((&interval 'count-by-leaf) ((&profile 'strings) (&sample 'leaf))) += (&sample 'count)
                         total += (&sample 'count)
 
                 foreach count (values (&interval 'count-by-leaf))
