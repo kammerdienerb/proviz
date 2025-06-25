@@ -10,12 +10,12 @@
 #define JULIE_IMPL
 #include "julie.h"
 
-#include "options.j.h"
-#include "log.j.h"
-#include "profile.j.h"
+#include "util.j.h"
 #include "parsers.j.h"
 #include "iaprof_parser.j.h"
 #include "perf_script_parser.j.h"
+#include "options.j.h"
+#include "profile.j.h"
 #include "sso_heatmap.j.h"
 #include "flamegraph.j.h"
 #include "thief_scope.j.h"
@@ -225,6 +225,8 @@ static Screen          screen2;
 static Screen         *update_screen = &screen1;
 static Screen         *render_screen = &screen2;
 
+static FILE *julie_file = NULL;
+
 
 static void on_julie_error(Julie_Error_Info *info);
 static void on_julie_output(const char *string, int length);
@@ -266,28 +268,21 @@ int main(int argc, char **argv) {
 
     julie_set_argv(interp, argc, argv);
 
-    julie_set_cur_file(interp, julie_get_string_id(interp, "log.j"));
-    julie_parse(interp, (const char*)log_j, log_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "options.j"));
-    julie_parse(interp, (const char*)options_j, options_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "profile.j"));
-    julie_parse(interp, (const char*)profile_j, profile_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "parsers.j"));
-    julie_parse(interp, (const char*)parsers_j, parsers_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "iaprof_parser.j"));
-    julie_parse(interp, (const char*)iaprof_parser_j, iaprof_parser_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "perf_script_parser.j"));
-    julie_parse(interp, (const char*)perf_script_parser_j, perf_script_parser_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "view.j"));
-    julie_parse(interp, (const char*)view_j, view_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "sso_heatmap.j"));
-    julie_parse(interp, (const char*)sso_heatmap_j, sso_heatmap_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "flamegraph.j"));
-    julie_parse(interp, (const char*)flamegraph_j, flamegraph_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "thief_scope.j"));
-    julie_parse(interp, (const char*)thief_scope_j, thief_scope_j_len);
-    julie_set_cur_file(interp, julie_get_string_id(interp, "main.j"));
-    julie_parse(interp, (const char*)main_j, main_j_len);
+#define LOAD_J(name)                                                     \
+    julie_set_cur_file(interp, julie_get_string_id(interp, #name ".j")); \
+    julie_parse(interp, (const char*)name##_j, name##_j_len);
+
+    LOAD_J(util);
+    LOAD_J(parsers);
+    LOAD_J(iaprof_parser);
+    LOAD_J(perf_script_parser);
+    LOAD_J(options);
+    LOAD_J(profile);
+    LOAD_J(view);
+    LOAD_J(sso_heatmap);
+    LOAD_J(flamegraph);
+    LOAD_J(thief_scope);
+    LOAD_J(main);
 
     set_term();
 
@@ -322,14 +317,31 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-static FILE *julie_file = NULL;
-
 static void on_julie_output(const char *string, int length) {
     if (!julie_file) {
-        julie_file = fopen("/tmp/proviz.log", "w");
+        julie_file = fopen("/tmp/proviz.log", "w+");
     }
     fprintf(julie_file, "%s", string);
     fflush(julie_file);
+}
+
+static void print_julie_output(void) {
+    char    *line;
+    size_t   cap;
+    ssize_t  len;
+
+    if (julie_file != NULL) {
+        fflush(julie_file);
+        rewind(julie_file);
+
+        line = NULL;
+        cap  = 0;
+        while ((len = getline(&line, &cap, julie_file)) > 0) {
+            fwrite(line, 1, len, stderr);
+        }
+
+        fclose(julie_file);
+    }
 }
 
 static void on_julie_error(Julie_Error_Info *info) {
@@ -343,6 +355,8 @@ static void on_julie_error(Julie_Error_Info *info) {
     Julie_Backtrace_Entry *it;
 
     restore_term();
+
+    print_julie_output();
 
     status = info->status;
 
@@ -1316,7 +1330,7 @@ void flush_screen(void) {
 }
 
 static Julie_Status j_term_exit(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
-    Julie_Status status;
+    Julie_Status  status;
 
     status = JULIE_SUCCESS;
 
@@ -1332,6 +1346,8 @@ static Julie_Status j_term_exit(Julie_Interp *interp, Julie_Value *expr, unsigne
     restore_term();
 
 /*     julie_free(interp); */
+
+    print_julie_output();
 
     exit(0);
 

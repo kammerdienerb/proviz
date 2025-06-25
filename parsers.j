@@ -1,4 +1,5 @@
-parsers := (object)
+parsers   := (object)
+detectors := (object)
 
 register-parser =
     fn (&format-name &parser-fn-sym)
@@ -8,11 +9,25 @@ register-parser =
         else
             parsers <- (&format-name : &parser-fn-sym)
 
-parse =
-    fn (&format-name &profile &file &view)
-        if (&format-name in parsers)
-            &sym = (parsers &format-name)
-            (&sym) &profile &file &view
+register-format-detector =
+    fn (&format-name &detector-fn-sym)
+        if (&format-name in detectors)
+            wlog "reregistering % detector" &format-name
+            (detectors &format-name) = &detector-fn-sym
         else
-            elog "parser '%' not registered" &format-name
+            detectors <- (&format-name : &detector-fn-sym)
 
+parse =
+    fn (format &profile &file &view)
+        if (format == "auto-detect")
+            format = nil
+            foreach f detectors
+                if ((format == nil) and (((detectors f)) &file))
+                    format = f
+            if (format == nil)
+                die "unable to auto-detect format for %" (&file '__path__)
+
+        if (format in parsers)
+            ((parsers format)) &profile &file &view
+        else
+            die "parser '%' not registered" format

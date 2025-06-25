@@ -63,8 +63,7 @@ define-class Heatmap-View-Input-Handler
         rows := &rows
         cols := &cols
 
-        mode = ((argv) 1)
-        path = ((argv) 2)
+        parse-cmdline-options (argv)
 
         heatmap-view :=
             (View 'new) &rows &cols
@@ -75,17 +74,29 @@ define-class Heatmap-View-Input-Handler
 
         profile := ((Profile 'new))
 
-        f = (fopen-rd path)
+        foreach pair (options 'FILES)
+            path   = (pair 0)
+            format = (pair 1)
 
-        parse (options 'format) profile f &current-view
+            f = (fopen-rd path)
 
-        match mode
+            &current-view @ ('loading-bar-init (fmt "Loading %" (f '__path__)))
+            parse format profile f &current-view
+            &current-view @ ('loading-bar-fini)
+
+            fclose f
+
+        &current-view @ ('loading-bar-init (fmt "Processing..."))
+        profile @ ('postprocess &current-view)
+        &current-view @ ('loading-bar-fini)
+
+        match (options 'COMMAND)
             "flamescope"
                 &current-view @
                     'add-widget "heatmap"
                         (SSO-Heatmap 'new) profile (profile 'default-event)
 
-            "thief"
+            "thiefscope"
                 &current-view @
                     'add-widget "heatmap"
                         (Thief-Scope 'new) profile (profile 'default-event)

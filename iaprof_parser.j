@@ -1,64 +1,43 @@
 parse-iaprof =
     fn (&profile &file &view)
-        lines  = (fread-lines &file)
-        length = (len lines)
+        lines         = (fread-lines &file)
+        length        = (len lines)
+        update        = (length / (&view 'width))
+        ln            = 0
+        string-id-map = (object)
 
-        &interval-time = (options 'interval-time)
-        &strings       = (&profile 'strings)
-
-        &view @ ('loading-bar-init "Loading profile")
-
-        update = (length / (&view 'width))
-
-        ln = 0
-        cur-time = 0
         foreach &line lines
             split-line = (split &line "\t")
+
             match (split-line 0)
                 "e"
-#                     &profile @
-#                         'push-event "EU Stall"
-#                             object
-#                                 'count : (parse-int (split-line 4))
-#                                 'stack : (split-line 1)
-                    append &stall-list
-                        object
-                            'count : (parse-int (split-line 4))
-                            'stack : (split-line 1)
+                    &profile @
+                        'push-sample
+                            object
+                                'type  : "EU Stall"
+                                'time  : time
+                                'stack : (string-id-map (parse-int (split-line 1)))
+                                'count : (parse-int (split-line 4))
 
                 "string"
-                    &strings <- ((split-line 1) : (split-line 2))
+                    string-id-map <-
+                        (parse-int (split-line 1)) :
+                            &profile @ ('string-id (split-line 2))
 
                 "interval_start"
                     time = (parse-float (split-line 2))
 
-                    if (cur-time == 0)
-                        cur-time = time
-                        &profile @
-                            'push-interval
-                                cur-time
-                                cur-time + &interval-time
-
-                    elif (time >= (cur-time + &interval-time))
-                        num-elapsed = (sint ((time - cur-time) / &interval-time))
-                        repeat i num-elapsed
-                            &profile @
-                                'push-interval
-                                    cur-time + (&interval-time * i)
-                                    cur-time + (&interval-time * (i + 1))
-                        cur-time += (&interval-time * num-elapsed)
-
-                    if (is-bound &stall-list)
-                        unref &stall-list
-                    &stall-list = (get-or-insert ((last (&profile 'intervals)) 'events-by-type) "EU Stall" (list))
-
-            ln += 1
-            if ((ln % update) == 0)
+            if (((++ ln) % update) == 0)
                 &view @ ('loading-bar-update ((float ln) / length))
 
-        &view @ ('loading-bar-fini)
+looks-like-iaprof =
+    fn (&file)
+        or
+            endswith (&file '__path__) ".iaprof"
+            do
+                first-line = (fread-line &file)
+                frewind &file
+                first-line == "string\t1\t[unknown file]"
 
-        (&profile 'default-event) = "EU Stall"
-
-
-register-parser "iaprof" (' parse-iaprof)
+register-parser          "iaprof" (' parse-iaprof)
+register-format-detector "iaprof" (' looks-like-iaprof)

@@ -2,8 +2,8 @@ log =
     fn (&type &message)
         prefix = ""
         match &type
-            'error : (prefix = "WARNING: ")
-            'warn  : (prefix = "ERROR:   ")
+            'error : (prefix = "ERROR:   ")
+            'warn  : (prefix = "WARNING: ")
             'info  : (prefix = "INFO:    ")
 
         print prefix
@@ -24,3 +24,8 @@ wlog =
 ilog =
     fn (&format-string ...)
         log 'info (log-fmt &format-string ...)
+
+die =
+    fn (&format-string ...)
+        log 'error (log-fmt &format-string ...)
+        @term:exit

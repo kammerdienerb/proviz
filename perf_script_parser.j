@@ -1,20 +1,11 @@
 parse-perf-script =
     fn (&profile &file &view)
-        lines  = (fread-lines &file)
-        length = (len lines)
+        lines    = (fread-lines &file)
+        length   = (len lines)
+        update   = (length / (&view 'width))
+        ln       = 0
+        &def-evt = (&profile 'default-event)
 
-        &interval-time = (options 'interval-time)
-        &strings       = (&profile 'strings)
-
-        &view @ ('loading-bar-init "Loading profile")
-
-        update = (length / (&view 'width))
-
-        stacks = (object)
-        sid = 1
-
-        ln = 0
-        cur-time = 0
         foreach &line lines
             if (len &line)
                 if (not (startswith &line "\t"))
@@ -26,64 +17,45 @@ parse-perf-script =
                     count    = (parse-int   (split-line 3))
                     event    = (((split-line 4) =~ "(.*):$") 1)
                     stack    = ""
+                    leaf     = "[unknown]"
 
-                    if (cur-time == 0)
-                        cur-time = time
-                        &profile @
-                            'push-interval
-                                cur-time
-                                cur-time + &interval-time
+                    if (&def-evt == nil)
+                        &def-evt = event
 
-                        (&profile 'default-event) = event
-
-                    elif (time >= (cur-time + &interval-time))
-                        num-elapsed = (sint ((time - cur-time) / &interval-time))
-                        repeat i num-elapsed
-                            &profile @
-                                'push-interval
-                                    cur-time + (&interval-time * i)
-                                    cur-time + (&interval-time * (i + 1))
-                        cur-time += (&interval-time * num-elapsed)
                 else
                     matches = (&line =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
+
                     sym = (move (matches 2))
                     if (startswith sym "[unknown]")
                         sym = (fmt "0x%%" (matches 1) (substr sym 9 ((len sym) - 9)))
-#                     stack =
-#                         select (len stack)
-#                             fmt "%;%" sym stack
-#                             sym
-#                     if (not (startswith sym "[unknown]"))
+
                     if (len stack)
                         stack = (fmt "%;%" sym stack)
                     else
                         stack = sym
                         leaf  = sym
+
             else
-                if (len stack)
-                    sample =
+                stack = (fmt "%;%;%" cmd-name pid (select (len stack) stack leaf))
+                &profile @
+                    'push-sample
                         object
+                            'type  : event
                             'count : count
-                    stack = (fmt "%;%;%" cmd-name pid stack)
-                    if (stack in stacks)
-                        stack-id = (stacks stack)
-                    else
-                        stacks <- (stack : sid)
-                        stack-id = sid
-                        sid += 1
-                    sample <- ('stack : stack-id)
-                    sample <- ('leaf  : leaf)
-                    &profile @ ('push-event event (move sample))
+                            'time  : time
+                            'stack : (&profile @ ('string-id stack))
+                            'leaf  : (&profile @ ('string-id leaf))
 
+looks-like-perf-script =
+    fn (&file)
+        or
+            endswith (&file '__path__) ".perf"
+            endswith (&file '__path__) ".perf_script"
+            do
+                first-line = (fread-line &file)
+                frewind &file
+                matches = (first-line =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
+                matches != nil
 
-            ln += 1
-            if ((ln % update) == 0)
-                &view @ ('loading-bar-update ((float ln) / length))
-
-        &view @ ('loading-bar-fini)
-
-        foreach stack stacks
-            &strings <- ((stacks stack) : stack)
-
-
-register-parser "perf-script" (' parse-perf-script)
+register-parser          "perf-script" (' parse-perf-script)
+register-format-detector "perf-script" (' looks-like-perf-script)
