@@ -17,8 +17,11 @@ parse-perf-script =
         cur-time = 0
         foreach &line lines
             if (len &line)
-                if (not (startswith &line "\t"))
+                if ((not (startswith &line "\t")) and (not (startswith &line "#")))
                     split-line = (split &line " ")
+                    
+                    if ((len split-line) < 3)
+                        print fmt "%" ln
 
                     cmd-name = (move        (split-line 0))
                     pid      = (parse-int   (split-line 1))
@@ -44,16 +47,11 @@ parse-perf-script =
                                     cur-time + (&interval-time * i)
                                     cur-time + (&interval-time * (i + 1))
                         cur-time += (&interval-time * num-elapsed)
-                else
+                elif (not (startswith &line "#"))
                     matches = (&line =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
                     sym = (move (matches 2))
                     if (startswith sym "[unknown]")
                         sym = (fmt "0x%%" (matches 1) (substr sym 9 ((len sym) - 9)))
-#                     stack =
-#                         select (len stack)
-#                             fmt "%;%" sym stack
-#                             sym
-#                     if (not (startswith sym "[unknown]"))
                     if (len stack)
                         stack = (fmt "%;%" sym stack)
                     else

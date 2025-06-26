@@ -3,7 +3,7 @@ define-class View
     'width             : 0
     'loading-bar-label : ""
     'widgets           : (object)
-
+    'vert-offset       : 0
 
     'new :
         fn (&height &width ...)
@@ -16,11 +16,24 @@ define-class View
     'add-widget :
         fn (&self &name &widget)
             (&self 'widgets) <- (&name : &widget)
+            
+    'clear :
+        fn (&self)
+            @term:clear
 
     'paint :
         fn (&self)
+        
+            # DEBUG status bar
+            text = (fmt "vert-offset: %" (&self 'vert-offset))
+            col = 1
+            foreach char (chars text)
+                @term:set-cell-fg   1 col 0x0000ff
+                @term:set-cell-char 1 col char
+                col += 1
+            
             foreach widget-name (&self 'widgets)
-                ((&self 'widgets) widget-name) @ ('paint &self)
+                ((&self 'widgets) widget-name) @ ('paint &self (&self 'vert-offset))
             @term:flush
 
     'loading-bar-init :
