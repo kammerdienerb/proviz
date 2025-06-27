@@ -42,14 +42,15 @@ define-class Thief-Scope
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
                         if ('stack in &sample)
-                            stacks <- (((&profile 'strings) (&sample 'stack)) : 1)
+                            stacks <- (((&profile 'strings) (&sample 'stack)) : (&sample 'stack))
 
-            stacks = (sorted (keys stacks))
+            sorted-stacks     = (sorted (keys stacks))
+            leaves            = (list)
+            string-id-to-leaf = (object)
 
-            leaves = (list)
-
-            foreach stack stacks
+            foreach stack sorted-stacks
                 leaf = (last (split stack ";"))
+                string-id-to-leaf <- ((stacks stack) : leaf)
                 if (not (leaf in leaves))
                     append leaves leaf
 
@@ -68,7 +69,7 @@ define-class Thief-Scope
 
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
-                        ((&interval 'count-by-leaf) ((&profile 'strings) (&sample 'leaf))) += (&sample 'count)
+                        ((&interval 'count-by-leaf) (string-id-to-leaf (&sample 'stack))) += (&sample 'count)
                         total += (&sample 'count)
 
                 foreach count (values (&interval 'count-by-leaf))

@@ -69,10 +69,9 @@ parse-perf-script =
                         stack = (fmt "%;%" sym stack)
                     else
                         stack = sym
-                        leaf  = sym
 
             else
-                stack = (fmt "%;%;%" cmd-name pid (select (len stack) stack leaf))
+                stack = (fmt "%;%;%" cmd-name pid (select (len stack) stack "[unknown]"))
                 &profile @
                     'push-sample
                         object
@@ -80,7 +79,6 @@ parse-perf-script =
                             'count : count
                             'time  : time
                             'stack : (&profile @ ('string-id stack))
-                            'leaf  : (&profile @ ('string-id leaf))
 
             if (((++ ln) % update) == 0)
                 &view @ ('loading-bar-update ((float ln) / length))
