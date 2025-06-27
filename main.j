@@ -34,29 +34,31 @@ define-class Heatmap-View-Input-Handler
 
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
-            response = nil
-            if ((&action == 'down) and (&button == 'left))
-                response = (((&view 'widgets) "heatmap") @ ('mouse-click &view &row &col))
-            elif (&action == 'over)
-                response = (((&view 'widgets) "heatmap") @ ('mouse-over &view &row &col))
-
-            if (response == 'range-selected)
-                range = (((&view 'widgets) "heatmap") @ ('get-selected-range))
-
-                ((&view 'widgets) "heatmap") @ ('reset-selection &view)
-
-                flamegraph-view :=
-                    (View 'new) rows cols
-                        'name          : "Flame Graph"
-                        'input-handler : (new-instance FlameGraph-View-Input-Handler)
-
-                set-view flamegraph-view
-
-                &current-view @
-                    'add-widget "flamegraph"
-                        (Flame-Graph 'new) profile (profile 'default-event) (range 0) (range 1)
-
-                &current-view @ ('paint)
+            foreach widget-name (&view 'widgets)
+                &widget = ((&view 'widgets) widget-name)
+                response = nil
+                if ((&action == 'down) and (&button == 'left))
+                    response = (&widget @ ('mouse-click &view &row &col))
+                elif (&action == 'over)
+                    response = (&widget @ ('mouse-over &view &row &col))
+    
+                if (response == 'range-selected)
+                    range = (&widget @ ('get-selected-range))
+    
+                    &widget @ ('reset-selection &view)
+    
+                    flamegraph-view :=
+                        (View 'new) rows cols
+                            'name          : "Flame Graph"
+                            'input-handler : (new-instance FlameGraph-View-Input-Handler)
+    
+                    set-view flamegraph-view
+    
+                    &current-view @
+                        'add-widget "flamegraph"
+                            (Flame-Graph 'new) profile (profile 'default-event) (range 0) (range 1)
+    
+                    &current-view @ ('paint)
 
 @on-init =
     fn (&rows &cols)
@@ -86,15 +88,16 @@ define-class Heatmap-View-Input-Handler
 
             fclose f
 
-        &current-view @ ('loading-bar-init (fmt "Processing..."))
+        &current-view @ ('loading-bar-init (fmt "Processing profile..."))
         profile @ ('postprocess &current-view)
         &current-view @ ('loading-bar-fini)
 
         match (options 'COMMAND)
             "flamescope"
-                &current-view @
-                    'add-widget "heatmap"
-                        (SSO-Heatmap 'new) profile (profile 'default-event)
+                foreach event (profile 'num-events-by-type)
+                    &current-view @
+                        'add-widget "heatmap"
+                            (SSO-Heatmap 'new) profile event
 
             "thiefscope"
                 &current-view @
