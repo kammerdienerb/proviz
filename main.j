@@ -20,6 +20,15 @@ define-class FlameGraph-View-Input-Handler
             match &key
                 "q"
                     set-view heatmap-view
+                "up"
+                    (&view 'vert-offset) = ((&view 'vert-offset) + 1)
+                    &view @ ('clear)
+                    &view @ ('paint)
+                "down"
+                    if ((&view 'vert-offset) > 0)
+                        (&view 'vert-offset) = ((&view 'vert-offset) - 1)
+                        &view @ ('clear)
+                        &view @ ('paint)
 
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
@@ -31,6 +40,14 @@ define-class Heatmap-View-Input-Handler
             match &key
                 "q"
                     @term:exit
+                "up"
+                    (&view 'vert-offset) = ((&view 'vert-offset) + 1)
+                    &view @ ('clear)
+                    &view @ ('paint)
+                "down"
+                    (&view 'vert-offset) = ((&view 'vert-offset) - 1)
+                    &view @ ('clear)
+                    &view @ ('paint)
 
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
@@ -56,9 +73,10 @@ define-class Heatmap-View-Input-Handler
     
                     &current-view @
                         'add-widget "flamegraph"
-                            (Flame-Graph 'new) profile (profile 'default-event) (range 0) (range 1)
+                            (Flame-Graph 'new) profile (&widget 'event) (range 0) (range 1)
     
                     &current-view @ ('paint)
+                unref &widget
 
 @on-init =
     fn (&rows &cols)
@@ -94,15 +112,22 @@ define-class Heatmap-View-Input-Handler
 
         match (options 'COMMAND)
             "flamescope"
+                offset = 2
                 foreach event (profile 'num-events-by-type)
+                    name = (fmt "heatmap/%" event)
                     &current-view @
-                        'add-widget "heatmap"
-                            (SSO-Heatmap 'new) profile event
+                        'add-widget name
+                            (SSO-Heatmap 'new) profile event offset
+                    offset = ((offset + (((&current-view 'widgets) name) 'height)) + 1)
 
             "thiefscope"
-                &current-view @
-                    'add-widget "heatmap"
-                        (Thief-Scope 'new) profile (profile 'default-event)
+                offset = 2
+                foreach event (profile 'num-events-by-type)
+                    name = (fmt "thiefscope/%" event)
+                    &current-view @
+                        'add-widget name
+                            (Thief-Scope 'new) profile event offset
+                    offset = ((offset + (((&current-view 'widgets) name) 'height)) + 1)
 
         &current-view @ ('paint)
 

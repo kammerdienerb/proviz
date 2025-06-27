@@ -3,7 +3,7 @@ define-class View
     'width             : 0
     'loading-bar-label : ""
     'widgets           : (object)
-
+    'vert-offset       : 0
 
     'new :
         fn (&height &width ...)
@@ -16,11 +16,15 @@ define-class View
     'add-widget :
         fn (&self &name &widget)
             (&self 'widgets) <- (&name : &widget)
-
+            
+    'clear :
+        fn (&self)
+            @term:clear
+            
     'paint :
         fn (&self)
             foreach widget-name (&self 'widgets)
-                ((&self 'widgets) widget-name) @ ('paint &self)
+                ((&self 'widgets) widget-name) @ ('paint &self (&self 'vert-offset))
             @term:flush
 
     'loading-bar-init :

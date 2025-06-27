@@ -15,7 +15,32 @@ define-class Thief-Scope-Blip
             move blip
 
     'paint :
-        fn (&self &view)
+        fn (&self &view &blip-row)
+            row = ((&self 'row) + (&view 'vert-offset))
+            if (row >= &blip-row)
+                @term:set-cell-bg
+                    row
+                    (&self 'col)
+                    (&self 'color)
+                
+define-class Thief-Scope-Guide-Blip
+    'row   : 0
+    'col   : 0
+    'color : 0x000000
+
+
+    'new :
+        fn (&row &col &color)
+            blip = (new-instance Thief-Scope-Guide-Blip)
+
+            (blip 'row)   = &row
+            (blip 'col)   = &col
+            (blip 'color) = &color
+
+            move blip
+
+    'paint :
+        fn (&self &view &blip-row)
             @term:set-cell-bg
                 (&self 'row)
                 (&self 'col)
@@ -24,6 +49,14 @@ define-class Thief-Scope-Blip
 define-class Thief-Scope
     'height             : 0
     'width              : 0
+    'start-row          : 0
+    'event              : ""
+    
+    'guide-row          : 0
+    'text-row           : 0
+    'blip-row           : 0
+    'grid-height        : 0
+    
     'max-interval-count : 0
     'leaves             : (list)
     'blips              : (list)
@@ -35,7 +68,7 @@ define-class Thief-Scope
 
 
     'new :
-        fn (&profile &event)
+        fn (&profile &event &start-row)
             stacks = (object)
 
             foreach &interval (&profile 'intervals)
@@ -56,9 +89,15 @@ define-class Thief-Scope
 
             map = (new-instance Thief-Scope)
 
-            (map 'height) = (len leaves)
-            (map 'width)  = (len (&profile 'intervals))
-            (map 'leaves) = (move leaves)
+            (map 'grid-height) = (len leaves)
+            (map 'height)      = ((map 'grid-height) + 2)
+            (map 'width)       = (len (&profile 'intervals))
+            (map 'leaves)      = (move leaves)
+            (map 'start-row)   = &start-row
+            (map 'guide-row)   = &start-row
+            (map 'text-row)    = (&start-row + 1)
+            (map 'blip-row)    = (&start-row + 2)
+            (map 'event)       = &event
 
             largest-count = 0
             foreach &interval (&profile 'intervals)
@@ -85,9 +124,9 @@ define-class Thief-Scope
                 g = (r / 2)
                 color = (select (value == 0.0) 0x000000 ((r << 16) | (g << 8)))
                 append (map 'guide-blips)
-                    (Thief-Scope-Blip 'new) 1 col color
+                    (Thief-Scope-Guide-Blip 'new) (map 'guide-row) col color
 
-                row = 3
+                row = (map 'blip-row)
                 foreach &leaf (map 'leaves)
                     count = ((&interval 'count-by-leaf) &leaf)
                     value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
@@ -103,53 +142,58 @@ define-class Thief-Scope
             move map
 
     'paint :
-        fn (&self &view)
-            repeat c (&view 'width)
-                @term:set-cell-bg   2 (c + 1) 0x002000
-                @term:set-cell-char 2 (c + 1) " "
-            foreach &blip (&self 'guide-blips)
-                &blip @ ('paint &view)
+        fn (&self &view &vert-offset)
+            &self @ ('reset-selection &view)
+            (&self 'blip-row) = (((&self 'start-row) + &vert-offset) + 2)
             foreach &blip (&self 'blips)
-                &blip @ ('paint &view)
+                &blip @ ('paint &view (&self 'blip-row))
+            foreach &blip (&self 'guide-blips)
+                &blip @ ('paint &view (&self 'blip-row))
+            repeat c (&view 'width)
+                @term:set-cell-bg   (&self 'text-row) (c + 1) 0x002000
+                @term:set-cell-char (&self 'text-row) (c + 1) " "
 
     'coord-to-blip-idx :
-        fn (&self &row &col)
-            ((&col - 1) * (&self 'height)) + (&row - 3)
+        fn (&self &view &row &col)
+            &grid-height = (&self 'grid-height)
+            start-row = (&self 'blip-row)
+            start-col = 1
+            ((&col - start-col) * &grid-height) + (&row - start-row)
 
     'set-col-color-mask :
         fn (&self &view &col &mask)
-            repeat i (&self 'height)
-                idx = (((&col - 1) * (&self 'height)) + i)
+            repeat i (&self 'grid-height)
+                idx = (((&col - 1) * (&self 'grid-height)) + i)
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) |= &mask
-                &blip @ ('paint &view)
+                &blip @ ('paint &view (&self 'blip-row))
                 unref &blip
 
     'reset-col-color :
         fn (&self &view &col)
-            repeat i (&self 'height)
-                idx = (((&col - 1) * (&self 'height)) + i)
+            repeat i (&self 'grid-height)
+                idx = (((&col - 1) * (&self 'grid-height)) + i)
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) &= 0xff0000
-                &blip @ ('paint &view)
+                &blip @ ('paint &view (&self 'blip-row))
                 unref &blip
 
     'set-row-color-mask :
         fn (&self &view &row &mask)
             repeat i (&self 'width)
-                idx = ((i * (&self 'height)) + (&row - 3))
+                idx = (&self @ ('coord-to-blip-idx &view &row (i + 1)))
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) |= &mask
-                &blip @ ('paint &view)
+                &blip @ ('paint &view (&self 'blip-row))
                 unref &blip
 
     'reset-row-color :
         fn (&self &view &row)
             repeat i (&self 'width)
-                idx = ((i * (&self 'height)) + (&row - 3))
+                idx = (&self @ ('coord-to-blip-idx &view &row (i + 1)))
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) &= 0xff0000
-                &blip @ ('paint &view)
+                &blip @ ('paint &view (&self 'blip-row))
                 unref &blip
 
     'get-selected-range :
@@ -189,17 +233,8 @@ define-class Thief-Scope
     'mouse-over :
         fn (&self &view &row &col)
             response = nil
-            if ((&row > 2) and (&row <= ((&self 'height) + 1)))
-                repeat c (&view 'width)
-                    @term:set-cell-bg   2 (c + 1) 0x002000
-                    @term:set-cell-char 2 (c + 1) " "
-                c = 1
-                foreach char (chars ((&self 'leaves) (&row - 3)))
-                    @term:set-cell-fg   2 c 0xffffff
-                    @term:set-cell-char 2 c char
-                    c += 1
-
-                idx = (&self @ ('coord-to-blip-idx &row &col))
+            if ((&row >= (&self 'blip-row)) and (&row < ((&self 'grid-height) + (&self 'blip-row))))
+                idx = (&self @ ('coord-to-blip-idx &view &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
                         'no-selection
@@ -243,14 +278,27 @@ define-class Thief-Scope
                                 i += (start + 1)
                                 &self @ ('set-col-color-mask &view i 0x000040)
 
+
+                foreach &blip (&self 'guide-blips)
+                    &blip @ ('paint &view (&self 'blip-row))
+                    
+                repeat c (&view 'width)
+                    @term:set-cell-bg   (&self 'text-row) (c + 1) 0x002000
+                    @term:set-cell-char (&self 'text-row) (c + 1) " "
+                c = 1
+                foreach char (chars ((&self 'leaves) (&row - (&self 'blip-row))))
+                    @term:set-cell-fg   (&self 'text-row) c 0xffffff
+                    @term:set-cell-char (&self 'text-row) c char
+                    c += 1
+
                 @term:flush
             response
 
     'mouse-click :
         fn (&self &view &row &col)
             response = nil
-            if ((&row > 2) and (&row <= ((&self 'height) + 1)))
-                idx = (&self @ ('coord-to-blip-idx &row &col))
+            if ((&row >= (&self 'blip-row)) and (&row < ((&self 'grid-height) + (&self 'blip-row))))
+                idx = (&self @ ('coord-to-blip-idx &view &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
                         'no-selection
