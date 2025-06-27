@@ -11038,7 +11038,7 @@ void julie_free(Julie_Interp *interp) {
     Julie_Symbol_Table      *symtab;
     char                    *key;
     Julie_String_ID         *id;
-    int                      i;
+    unsigned long long       i;
     Julie_Source_Value_Info *info;
     Julie_Apply_Context     *cxt;
     void                    *handle;
@@ -11050,9 +11050,11 @@ void julie_free(Julie_Interp *interp) {
     }
     julie_array_free(interp->argv);
 
-    for (i = interp->local_symtab_depth; i > 0; i -= 1) {
+    for (i = julie_array_len(interp->local_symtab_stack); i > 0; i -= 1) {
         symtab = julie_array_elem(interp->local_symtab_stack, i - 1);
-        julie_clear_symtab(interp, symtab);
+        if (i <= interp->local_symtab_depth) {
+            julie_clear_symtab(interp, symtab);
+        }
         free(symtab);
     }
     julie_array_free(interp->local_symtab_stack);
