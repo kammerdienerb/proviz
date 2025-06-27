@@ -21,12 +21,12 @@ define-class FlameGraph-View-Input-Handler
                 "q"
                     set-view heatmap-view
                 "up"
-                    (&view 'vert-offset) = ((&view 'vert-offset) + 1)
+                    ++ (&view 'vert-offset)
                     &view @ ('clear)
                     &view @ ('paint)
                 "down"
                     if ((&view 'vert-offset) > 0)
-                        (&view 'vert-offset) = ((&view 'vert-offset) - 1)
+                        -- (&view 'vert-offset)
                         &view @ ('clear)
                         &view @ ('paint)
 
@@ -41,11 +41,19 @@ define-class Heatmap-View-Input-Handler
                 "q"
                     @term:exit
                 "up"
-                    (&view 'vert-offset) = ((&view 'vert-offset) + 1)
+                    ++ (&view 'vert-offset)
                     &view @ ('clear)
                     &view @ ('paint)
                 "down"
-                    (&view 'vert-offset) = ((&view 'vert-offset) - 1)
+                    -- (&view 'vert-offset)
+                    &view @ ('clear)
+                    &view @ ('paint)
+                "right"
+                    -- (&view 'horiz-offset)
+                    &view @ ('clear)
+                    &view @ ('paint)
+                "left"
+                    ++ (&view 'horiz-offset)
                     &view @ ('clear)
                     &view @ ('paint)
 

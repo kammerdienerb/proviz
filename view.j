@@ -4,6 +4,7 @@ define-class View
     'loading-bar-label : ""
     'widgets           : (object)
     'vert-offset       : 0
+    'horiz-offset      : 0
 
     'new :
         fn (&height &width ...)
@@ -24,7 +25,7 @@ define-class View
     'paint :
         fn (&self)
             foreach widget-name (&self 'widgets)
-                ((&self 'widgets) widget-name) @ ('paint &self (&self 'vert-offset))
+                ((&self 'widgets) widget-name) @ ('paint &self (&self 'vert-offset) (&self 'horiz-offset))
             @term:flush
 
     'loading-bar-init :

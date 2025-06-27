@@ -15,10 +15,10 @@ define-class SSO-Heatmap-Blip
             move blip
 
     'paint :
-        fn (&self &view &vert-offset)
+        fn (&self &view &vert-offset &horiz-offset)
             @term:set-cell-bg
                 ((&self 'row) + &vert-offset)
-                (&self 'col)
+                ((&self 'col) + &horiz-offset)
                 (&self 'color)
 
 define-class SSO-Heatmap
@@ -31,6 +31,7 @@ define-class SSO-Heatmap
     'anchor-idx  : nil
     'tail-idx    : nil
     'vert-offset : 0
+    'horiz-offset : 0
     'event       : ""
 
     'new :
@@ -72,8 +73,9 @@ define-class SSO-Heatmap
             move map
 
     'paint :
-        fn (&self &view &vert-offset)
+        fn (&self &view &vert-offset &horiz-offset)
             (&self 'vert-offset) = &vert-offset
+            (&self 'horiz-offset) = &horiz-offset
             row = ((&self 'start-row) + &vert-offset)
             c = 1
             foreach char (chars (&self 'event))
@@ -81,26 +83,26 @@ define-class SSO-Heatmap
                 @term:set-cell-char row c char
                 c += 1
             foreach &blip (&self 'blips)
-                &blip @ ('paint &view &vert-offset)
+                &blip @ ('paint &view &vert-offset &horiz-offset)
 
     'coord-to-blip-idx :
         fn (&self &view &row &col)
             &grid-height = (&self 'grid-height)
             start-row = (((&self 'start-row) + (&view 'vert-offset)) + 1)
-            start-col = 1
+            start-col = ((&self 'horiz-offset) + 1)
             ((&col - start-col) * &grid-height) + ((&grid-height - 1) + (start-row - &row))
 
     'set-blip-color-mask :
         fn (&self &view &idx &mask)
             &blip = ((&self 'blips) &idx)
             (&blip 'color) |= &mask
-            &blip @ ('paint &view (&self 'vert-offset))
+            &blip @ ('paint &view (&self 'vert-offset) (&self 'horiz-offset))
 
     'reset-blip-color :
         fn (&self &view &idx)
             &blip = ((&self 'blips) &idx)
             (&blip 'color) &= 0xffff00
-            &blip @ ('paint &view (&self 'vert-offset))
+            &blip @ ('paint &view (&self 'vert-offset) (&self 'horiz-offset))
 
     'get-selected-range :
         fn (&self)

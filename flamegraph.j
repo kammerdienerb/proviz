@@ -199,5 +199,5 @@ define-class Flame-Graph
             (&self 'base) @ ('sort)
 
     'paint :
-        fn (&self &view &vert-offset)
+        fn (&self &view &vert-offset &horiz-offset)
             (&self 'base) @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
