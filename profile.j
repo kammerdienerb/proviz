@@ -14,12 +14,12 @@ sample-time-cmp =
         (&a 'time) < (&b 'time)
 
 define-class Profile
-    'strings       : (object)
-    'sid           : 0
-    'samples       : (list)
-    'intervals     : (list)
-    'default-event : nil
-
+    'strings            : (object)
+    'sid                : 0
+    'samples            : (list)
+    'intervals          : (list)
+    'num-events-by-type : (object)
+    'default-event      : ""
 
     'new :
         fn ()
@@ -43,12 +43,13 @@ define-class Profile
             update         = (length / (&view 'width))
             ln             = 0
             cur-time       = 0
-            &def-evt       = (&self 'default-event)
             &interval-time = (options 'interval-time)
+            &def-evt       = (&self 'default-event)
 
             foreach &sample (&self 'samples)
                 if (&def-evt == nil)
                     &def-evt = (&sample 'type)
+                (get-or-insert (&self 'num-events-by-type) (&sample 'type) 0) += (&sample 'count)
 
                 time = (&sample 'time)
 
