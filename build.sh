@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 cd $DIR
 
 rm -f *.j.h
 
-for f in *.j; do
-    xxd -n $(basename ${f} ".j")_j -i ${f} > ${f}.h || exit $?
+for f in $(find . -name "*.j"); do
+    dir=$(basename $(dirname "${f}"))
+    if [[ ${dir} == "." ]]; then
+        dir=""
+    fi
+    base=$(basename ${f} ".j")
+    xxd -n "${dir}_${base}_j" -i ${f} > ${f}.h || exit $?
 done
 
 # ASAN="-fsanitize=address"

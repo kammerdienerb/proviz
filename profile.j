@@ -19,7 +19,7 @@ define-class Profile
     'samples            : (list)
     'intervals          : (list)
     'num-events-by-type : (object)
-    'default-event      : ""
+    'default-event      : nil
 
     'new :
         fn ()

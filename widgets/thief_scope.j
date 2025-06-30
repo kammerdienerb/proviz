@@ -142,7 +142,7 @@ define-class Thief-Scope
             move map
 
     'paint :
-        fn (&self &view &vert-offset)
+        fn (&self &view &vert-offset &horiz-offset)
             &self @ ('reset-selection &view)
             (&self 'blip-row) = (((&self 'start-row) + &vert-offset) + 2)
             foreach &blip (&self 'blips)

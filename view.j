@@ -1,3 +1,5 @@
+views = (object)
+
 define-class View
     'height            : 0
     'width             : 0
@@ -21,6 +23,18 @@ define-class View
     'clear :
         fn (&self)
             @term:clear
+            
+    'status-text :
+        fn (&self &text)
+            repeat col (&self 'width)
+                @term:set-cell-bg   1 (col + 1) 0x000000
+                @term:set-cell-fg   1 (col + 1) 0xffffff
+                @term:set-cell-char 1 (col + 1) " "
+            col = 1
+            foreach char (chars &text)
+                @term:set-cell-char 1 col char
+                ++ col
+            @term:flush
             
     'paint :
         fn (&self)
@@ -74,3 +88,19 @@ define-class View
         fn (&self &type &action &button &row &col)
             if ('input-handler in &self)
                 (&self 'input-handler) @ ('on-mouse &self &type &action &button &row &col)
+                
+    'set-input-handler :
+        fn (&self &input-handler)
+            (&self 'input-handler) = &input-handler
+                
+set-view =
+    fn (&view-name)
+        if (is-bound &current-view)
+            @term:clear
+            unref &current-view
+        if (not (&view-name in views))
+            die "no view named %" &view-name
+        &current-view := (views &view-name)
+        (&current-view 'height) = rows
+        (&current-view 'width)  = cols
+        &current-view @ ('paint)

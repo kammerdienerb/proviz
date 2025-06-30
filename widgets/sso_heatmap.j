@@ -2,15 +2,16 @@ define-class SSO-Heatmap-Blip
     'row   : 0
     'col   : 0
     'color : 0x000000
-    'char  : ""
+    'count : 0
 
     'new :
-        fn (&row &col &color)
+        fn (&row &col &color &count)
             blip = (new-instance SSO-Heatmap-Blip)
 
             (blip 'row)   = &row
             (blip 'col)   = &col
             (blip 'color) = &color
+            (blip 'count) = &count
 
             move blip
 
@@ -59,10 +60,13 @@ define-class SSO-Heatmap
             foreach &interval (&profile 'intervals)
                 &count = (&interval 'eustall-count)
                 value  = (select (largest-count == 0) 0.0 ((float &count) / largest-count))
-                color  = (select (value == 0.0) 0x000000 ((sint ((value * 225) + 30)) << 16))
+                color  =
+                    0xff0000 |
+                        ((sint ((1.0 - value) * 255)) << 8) |
+                            sint ((1.0 - value) * 255)
 
                 append (map 'blips)
-                    (SSO-Heatmap-Blip 'new) row col color
+                    (SSO-Heatmap-Blip 'new) row col color &count
 
                 if (row == (&start-row + 1))
                     row = (&start-row + &grid-height)
@@ -93,15 +97,15 @@ define-class SSO-Heatmap
             ((&col - start-col) * &grid-height) + ((&grid-height - 1) + (start-row - &row))
 
     'set-blip-color-mask :
-        fn (&self &view &idx &mask)
+        fn (&self &view &idx)
             &blip = ((&self 'blips) &idx)
-            (&blip 'color) |= &mask
+            (&blip 'color) &= 0x00ffff
             &blip @ ('paint &view (&self 'vert-offset) (&self 'horiz-offset))
 
     'reset-blip-color :
         fn (&self &view &idx)
             &blip = ((&self 'blips) &idx)
-            (&blip 'color) &= 0xffff00
+            (&blip 'color) |= 0xff0000
             &blip @ ('paint &view (&self 'vert-offset) (&self 'horiz-offset))
 
     'get-selected-range :
@@ -137,47 +141,56 @@ define-class SSO-Heatmap
         fn (&self &view &row &col)
             response = nil
             start-row = (((&self 'start-row) + (&view 'vert-offset)) + 1)
-            if ((&row >= start-row) and (&row < ((&self 'grid-height) + start-row)))
+            if
+                and
+                    &row >= start-row
+                    &row < ((&self 'grid-height) + start-row)
+                    &col >= (1 + (&self 'horiz-offset))
+                
                 idx = (&self @ ('coord-to-blip-idx &view &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
                         'no-selection
                             (&self 'anchor-idx) = idx
-                            &self @ ('set-blip-color-mask &view idx 0x0000b0)
+                            &self @ ('set-blip-color-mask &view idx)
 
                             (&self 'state) = 'anchor-hover
+                            &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
 
                         'anchor-hover
                             &self @ ('reset-blip-color &view (&self 'anchor-idx))
-                            &self @ ('set-blip-color-mask &view idx 0x0000b0)
+                            &self @ ('set-blip-color-mask &view idx)
                             (&self 'anchor-idx) = idx
+                            &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
 
                         'tail-hover
                             range  = (&self @ ('get-selected-range))
                             start  = (range 0)
                             length = (range 1)
 
-                            if (length > 2)
-                                repeat i (length - 2)
-                                    i += (start + 1)
-                                    &self @ ('reset-blip-color &view i)
+                            repeat i length
+                                i += start
+                                &self @ ('reset-blip-color &view i)
 
                             if ((&self 'tail-idx) != (&self 'anchor-idx))
                                 &self @ ('reset-blip-color &view (&self 'tail-idx))
 
                             if (idx != (&self 'anchor-idx))
-                                &self @ ('set-blip-color-mask &view idx 0x00007f)
+                                &self @ ('set-blip-color-mask &view idx)
 
                             (&self 'tail-idx) = idx
 
                             range  = (&self @ ('get-selected-range))
                             start  = (range 0)
                             length = (range 1)
+                            count  = 0
 
-                            if (length > 2)
-                                repeat i (length - 2)
-                                    i += (start + 1)
-                                    &self @ ('set-blip-color-mask &view i 0x00007f)
+                            repeat i length
+                                i += start
+                                count += (((&self 'blips) i) 'count)
+                                &self @ ('set-blip-color-mask &view i)
+                                    
+                            &view @ ('status-text (fmt "Samples: %" count))
 
                     @term:flush
             response
@@ -186,21 +199,26 @@ define-class SSO-Heatmap
         fn (&self &view &row &col)
             response = nil
             start-row = (((&self 'start-row) + (&view 'vert-offset)) + 1)
-            if ((&row >= start-row) and (&row < ((&self 'grid-height) + start-row)))
+            if
+                and
+                    &row >= start-row
+                    &row < ((&self 'grid-height) + start-row)
+                    &col >= (1 + (&self 'horiz-offset))
+                    
                 idx = (&self @ ('coord-to-blip-idx &view &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
                         'no-selection
                             (&self 'anchor-idx) = idx
                             (&self 'tail-idx) = idx
-                            &self @ ('set-blip-color-mask &view idx 0x0000ff)
+                            &self @ ('set-blip-color-mask &view idx)
 
                             (&self 'state) = 'tail-hover
 
                         'anchor-hover
                             (&self 'anchor-idx) = idx
                             (&self 'tail-idx)   = idx
-                            &self @ ('set-blip-color-mask &view idx 0x0000ff)
+                            &self @ ('set-blip-color-mask &view idx)
 
                             (&self 'state) = 'tail-hover
 

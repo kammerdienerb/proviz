@@ -10,15 +10,18 @@
 #define JULIE_IMPL
 #include "julie.h"
 
-#include "util.j.h"
+#include "util/util.j.h"
 #include "parsers.j.h"
-#include "iaprof_parser.j.h"
-#include "perf_script_parser.j.h"
+#include "parsers/iaprof_parser.j.h"
+#include "parsers/perf_script_parser.j.h"
 #include "options.j.h"
 #include "profile.j.h"
-#include "sso_heatmap.j.h"
-#include "flamegraph.j.h"
-#include "thief_scope.j.h"
+#include "widgets/sso_heatmap.j.h"
+#include "widgets/flamegraph.j.h"
+#include "widgets/thief_scope.j.h"
+#include "commands/flamegraph.j.h"
+#include "commands/flamescope.j.h"
+#include "commands/thiefscope.j.h"
 #include "view.j.h"
 #include "main.j.h"
 
@@ -268,20 +271,23 @@ int main(int argc, char **argv) {
 
     julie_set_argv(interp, argc, argv);
 
-#define LOAD_J(name)                                                     \
-    julie_set_cur_file(interp, julie_get_string_id(interp, #name ".j")); \
-    julie_parse(interp, (const char*)name##_j, name##_j_len);
+#define LOAD_J(name, ...)                                                \
+    julie_set_cur_file(interp, julie_get_string_id(interp, #__VA_ARGS__ "/" #name ".j")); \
+    julie_parse(interp, (const char*)__VA_ARGS__##_##name##_j, __VA_ARGS__##_##name##_j_len);
 
-    LOAD_J(util);
+    LOAD_J(util, util);
     LOAD_J(parsers);
-    LOAD_J(iaprof_parser);
-    LOAD_J(perf_script_parser);
+    LOAD_J(iaprof_parser, parsers);
+    LOAD_J(perf_script_parser, parsers);
     LOAD_J(options);
     LOAD_J(profile);
     LOAD_J(view);
-    LOAD_J(sso_heatmap);
-    LOAD_J(flamegraph);
-    LOAD_J(thief_scope);
+    LOAD_J(sso_heatmap, widgets);
+    LOAD_J(flamegraph, widgets);
+    LOAD_J(thief_scope, widgets);
+    LOAD_J(flamegraph, commands);
+    LOAD_J(flamescope, commands);
+    LOAD_J(thiefscope, commands);
     LOAD_J(main);
 
     set_term();
