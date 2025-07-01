@@ -19,11 +19,11 @@ define-class View
     'add-widget :
         fn (&self &name &widget)
             (&self 'widgets) <- (&name : &widget)
-            
+
     'clear :
         fn (&self)
             @term:clear
-            
+
     'status-text :
         fn (&self &text)
             repeat col (&self 'width)
@@ -34,8 +34,7 @@ define-class View
             foreach char (chars &text)
                 @term:set-cell-char 1 col char
                 ++ col
-            @term:flush
-            
+
     'paint :
         fn (&self)
             foreach widget-name (&self 'widgets)
@@ -88,11 +87,11 @@ define-class View
         fn (&self &type &action &button &row &col)
             if ('input-handler in &self)
                 (&self 'input-handler) @ ('on-mouse &self &type &action &button &row &col)
-                
+
     'set-input-handler :
         fn (&self &input-handler)
             (&self 'input-handler) = &input-handler
-                
+
 set-view =
     fn (&view-name)
         if (is-bound &current-view)

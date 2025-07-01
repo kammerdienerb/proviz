@@ -1210,7 +1210,8 @@ static void set_cell_glyph(unsigned row, unsigned col, const char *s) {
     memcpy(cell->glyph.bytes, g->bytes, glyph_len(g));
 }
 
-static void diff_and_swap_screens(void) {
+static int diff_and_swap_screens(void) {
+    int          any_dirty;
     int          n_cells;
     Screen_Cell *ucell;
     Screen_Cell *rcell;
@@ -1219,6 +1220,8 @@ static void diff_and_swap_screens(void) {
     int          ulen;
     int          dirty;
     int          j;
+
+    any_dirty = 0;
 
     n_cells = term_height * term_width;
     ucell   = update_screen->cells;
@@ -1250,9 +1253,13 @@ static void diff_and_swap_screens(void) {
         *rcell       = *ucell;
         rcell->dirty = dirty;
 
+        if (dirty) { any_dirty = 1; }
+
         ucell += 1;
         rcell += 1;
     }
+
+    return any_dirty;
 }
 
 void flush_screen(void) {
@@ -1260,7 +1267,7 @@ void flush_screen(void) {
     unsigned     row;
     unsigned     col;
 
-    diff_and_swap_screens();
+    if (diff_and_swap_screens() == 0) { return; }
 
     printf("\033[?2026h");
 
