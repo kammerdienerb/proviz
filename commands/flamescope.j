@@ -99,10 +99,10 @@ define-class FlameScope-View-Input-Handler
                         &widget @ ('reset-selection &view)
 
                         views <-
-                        "flamegraph" :
-                            (View 'new) rows cols
-                                'name          : "Flame Graph"
-                                'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
+                            "flamegraph" :
+                                (View 'new) rows cols
+                                    'name          : "Flame Graph"
+                                    'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
 
                         set-view "flamegraph"
 
