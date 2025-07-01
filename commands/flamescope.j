@@ -26,6 +26,7 @@ define-class Sub-FlameGraph-View-Input-Handler
                 elif (&action == 'drag)
                     if ('last-right-button-row in &view)
                         (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+                        (&view 'vert-offset) = (max (&view 'vert-offset) 0)
 #                     if ('last-right-button-col in &view)
 #                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
 
