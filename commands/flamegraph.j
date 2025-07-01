@@ -15,11 +15,30 @@ define-class FlameGraph-View-Input-Handler
                         &view @ ('paint)
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
-            foreach widget-name (&view 'widgets)
-                &widget = ((&view 'widgets) widget-name)
-                response = nil
-                if (&action == 'over)
-                    response = (&widget @ ('mouse-over &view &row &col))
+            if (&button == 'right)
+                if (&action == 'down)
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+                elif (&action == 'up)
+                    &view -> 'last-right-button-row
+                    &view -> 'last-right-button-col
+                elif (&action == 'drag)
+                    if ('last-right-button-row in &view)
+                        (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+#                     if ('last-right-button-col in &view)
+#                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
+
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+
+                    &view @ ('clear)
+                    &view @ ('paint)
+            else
+                foreach widget-name (&view 'widgets)
+                    &widget = ((&view 'widgets) widget-name)
+                    response = nil
+                    if (&action == 'over)
+                        response = (&widget @ ('mouse-over &view &row &col))
 
 flamegraph-command =
     fn (&profile)

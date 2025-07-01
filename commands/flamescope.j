@@ -16,11 +16,30 @@ define-class Sub-FlameGraph-View-Input-Handler
 
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
-            foreach widget-name (&view 'widgets)
-                &widget = ((&view 'widgets) widget-name)
-                response = nil
-                if (&action == 'over)
-                    response = (&widget @ ('mouse-over &view &row &col))
+            if (&button == 'right)
+                if (&action == 'down)
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+                elif (&action == 'up)
+                    &view -> 'last-right-button-row
+                    &view -> 'last-right-button-col
+                elif (&action == 'drag)
+                    if ('last-right-button-row in &view)
+                        (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+#                     if ('last-right-button-col in &view)
+#                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
+
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+
+                    &view @ ('clear)
+                    &view @ ('paint)
+            else
+                foreach widget-name (&view 'widgets)
+                    &widget = ((&view 'widgets) widget-name)
+                    response = nil
+                    if (&action == 'over)
+                        response = (&widget @ ('mouse-over &view &row &col))
 
 define-class FlameScope-View-Input-Handler
     'on-key :
@@ -47,39 +66,58 @@ define-class FlameScope-View-Input-Handler
 
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
-            foreach widget-name (&view 'widgets)
-                &widget = ((&view 'widgets) widget-name)
-                response = nil
-                if ((&action == 'down) and (&button == 'left))
-                    response = (&widget @ ('mouse-click &view &row &col))
-                elif (&action == 'over)
-                    response = (&widget @ ('mouse-over &view &row &col))
-    
-                if (response == 'range-selected)
-                    range = (&widget @ ('get-selected-range))
-    
-                    &widget @ ('reset-selection &view)
-    
-                    views <-
-                      "flamegraph" :
-                        (View 'new) rows cols
-                            'name          : "Flame Graph"
-                            'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
-    
-                    set-view "flamegraph"
-    
-                    &current-view @
-                        'add-widget "flamegraph"
-                            (Flame-Graph 'new) profile (&widget 'event) (range 0) (range 1) 2
-    
-                    &current-view @ ('paint)
-                unref &widget
+            if (&button == 'right)
+                if (&action == 'down)
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+                elif (&action == 'up)
+                    &view -> 'last-right-button-row
+                    &view -> 'last-right-button-col
+                elif (&action == 'drag)
+                    if ('last-right-button-row in &view)
+                        (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+                    if ('last-right-button-col in &view)
+                        (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
+
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+
+                    &view @ ('clear)
+                    &view @ ('paint)
+            else
+                foreach widget-name (&view 'widgets)
+                    &widget = ((&view 'widgets) widget-name)
+                    response = nil
+                    if ((&action == 'down) and (&button == 'left))
+                        response = (&widget @ ('mouse-click &view &row &col))
+                    elif (&action == 'over)
+                        response = (&widget @ ('mouse-over &view &row &col))
+
+                    if (response == 'range-selected)
+                        range = (&widget @ ('get-selected-range))
+
+                        &widget @ ('reset-selection &view)
+
+                        views <-
+                        "flamegraph" :
+                            (View 'new) rows cols
+                                'name          : "Flame Graph"
+                                'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
+
+                        set-view "flamegraph"
+
+                        &current-view @
+                            'add-widget "flamegraph"
+                                (Flame-Graph 'new) profile (&widget 'event) (range 0) (range 1) 2
+
+                        &current-view @ ('paint)
+                    unref &widget
 
 
 flamescope-command =
     fn (&profile)
         &current-view @ ('set-input-handler (new-instance FlameScope-View-Input-Handler))
-        
+
         offset = 2
         foreach event (&profile 'num-events-by-type)
             name = (fmt "heatmap/%" event)
