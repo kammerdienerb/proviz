@@ -205,10 +205,6 @@ define-class Flame-Graph
         fn (&self)
             (&self 'base) @ ('sort)
 
-    'paint :
-        fn (&self &view &vert-offset &horiz-offset)
-            (&self 'base) @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
-
     'paint-hover-frame :
         fn (&self &view &row &col &color)
             &cur-frame = (&self 'base)
@@ -242,6 +238,15 @@ define-class Flame-Graph
                 &view @ ('status-text (fmt "Frame: % Samples: %" (&cur-frame 'label) (&cur-frame 'count)))
 
             not out-of-bounds
+
+    'paint :
+        fn (&self &view &vert-offset &horiz-offset)
+            if ((&self 'last-sel-row) and (&self 'last-sel-col))
+                &self @ ('paint-hover-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)
+            &view @ ('status-text "")
+            (&self 'last-sel-row) = 0
+            (&self 'last-sel-col) = 0
+            (&self 'base) @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
 
     'mouse-over :
         fn (&self &view &row &col)
