@@ -26,34 +26,28 @@ parse-perf-script =
                     split-line = (split &line " ")
                     line-len = (len split-line)
                     
-                    # Find the last field that ends in a colon. We'll assume that this
-                    # is the event name. We'll also only consider the 5th, 6th, or 7th fields.
+                    # Find the first field that ends with a colon. This is the time.
+                    time-field = 0
                     event-field = 0
                     repeat i line-len
-                        event-match  = ((split-line i) =~ ends-in-colon-regex)
-                        if (event-match != nil)
-                            event = (event-match 1)
-                            event-field = i
+                        colon-match = ((split-line i) =~ ends-in-colon-regex)
+                        if (colon-match != nil)
+                            if (time-field == 0)
+                                time-field = i
+                                time = (parse-float (colon-match 1))
+                            elif (event-field == 0)
+                                event-field = i
+                                event = (colon-match 1)
+                    if (time-field == 0)
+                        wlog (fmt "Failed to parse time from: %" &line)
                     if (event-field == 0)
                         wlog (fmt "Failed to parse event from: %" &line)
                     
                     # Potentially get count from the second-to-last field
-                    if (endswith (split-line (event-field - 1)) ":")
-                        # Time is the second-to-last field, so there's no count
+                    if (event-field == (time-field + 1))
                         count = 1
-                        time-field = (event-field - 1)
                     else
-                        # Count is the second-to-last field, and time is the third-to-last
-                        count = (parse-int (move (split-line (event-field - 1))))
-                        time-field = (event-field - 2)
-                    
-                    # Based on if count was there or not, get time (which will end in a colon)
-                    time-match = ((move (split-line time-field)) =~ ends-in-colon-regex)
-                    if (time-match != nil)
-                        time = (parse-float (time-match 1))
-                    else
-                        wlog (fmt "Failed to parse time from: %" &line)
-                        time = 0
+                        count = (parse-int (move (split-line (time-field + 1))))
                       
                     # If the bracketed number is present, the PID is one field earlier
                     pid-field = (time-field - 1)

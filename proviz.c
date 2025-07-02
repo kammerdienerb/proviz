@@ -1083,6 +1083,8 @@ static void sig_handler(int sig) {
 
     /* Exit the terminal. */
     restore_term();
+    
+    print_julie_output();
 
     /* Do the real signal. */
     kill(0, sig);
