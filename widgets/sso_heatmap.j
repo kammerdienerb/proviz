@@ -25,7 +25,7 @@ define-class SSO-Heatmap-Blip
 define-class SSO-Heatmap
     'height      : 0
     'start-row   : 0
-    
+
     'grid-height : 0
     'blips       : (list)
     'state       : 'no-selection
@@ -43,7 +43,7 @@ define-class SSO-Heatmap
             (map 'height) = ((map 'grid-height) + 1)
             (map 'start-row) = &start-row
             (map 'event) = &event
-            
+
             largest-count = 0
             foreach &interval (&profile 'intervals)
                 count = 0
@@ -112,9 +112,15 @@ define-class SSO-Heatmap
         fn (&self)
             &a = (&self 'anchor-idx)
             &t = (&self 'tail-idx)
-            select (&a <= &t)
-                &a : ((&t - &a) + 1)
-                &t : ((&a - &t) + 1)
+
+            if (&t == nil)
+                range = (&a : 1)
+            else
+                range =
+                    select (&a <= &t)
+                        &a : ((&t - &a) + 1)
+                        &t : ((&a - &t) + 1)
+            move range
 
     'reset-selection :
         fn (&self &view)
@@ -135,7 +141,34 @@ define-class SSO-Heatmap
                     (&self 'anchor-idx) = nil
                     (&self 'tail-idx) = nil
 
+                'mirror
+                    range  = (&self @ ('get-selected-range))
+                    start  = (range 0)
+                    length = (range 1)
+
+                    repeat i length
+                        i += start
+                        &self @ ('reset-blip-color &view i)
+
+                    (&self 'anchor-idx) = nil
+                    (&self 'tail-idx) = nil
+
             (&self 'state) = 'no-selection
+
+    'set-mirror-range :
+        fn (&self &view &range)
+            &self @ ('reset-selection &view)
+
+            &start  = (&range 0)
+            &length = (&range 1)
+
+            repeat i &length
+                i += &start
+                &self @ ('set-blip-color-mask &view i)
+
+            (&self 'anchor-idx) = &start
+            (&self 'tail-idx)   = ((&start + &length) - 1)
+            (&self 'state)      = 'mirror
 
     'mouse-over :
         fn (&self &view &row &col)
@@ -146,22 +179,35 @@ define-class SSO-Heatmap
                     &row >= start-row
                     &row < ((&self 'grid-height) + start-row)
                     &col >= (1 + (&self 'horiz-offset))
-                
+
                 idx = (&self @ ('coord-to-blip-idx &view &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
+                        'mirror
+                            &self @ ('reset-selection &view)
+
+                            (&self 'anchor-idx) = idx
+                            &self @ ('set-blip-color-mask &view idx)
+                            (&self 'state) = 'anchor-hover
+                            &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
+
+                            response = 'range-hover
+
                         'no-selection
                             (&self 'anchor-idx) = idx
                             &self @ ('set-blip-color-mask &view idx)
-
                             (&self 'state) = 'anchor-hover
                             &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
+
+                            response = 'range-hover
 
                         'anchor-hover
                             &self @ ('reset-blip-color &view (&self 'anchor-idx))
                             &self @ ('set-blip-color-mask &view idx)
                             (&self 'anchor-idx) = idx
                             &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
+
+                            response = 'range-hover
 
                         'tail-hover
                             range  = (&self @ ('get-selected-range))
@@ -192,6 +238,8 @@ define-class SSO-Heatmap
                                     
                             &view @ ('status-text (fmt "Samples: % | Seconds: %" count (length * (options 'interval-time))))
 
+                            response = 'range-hover
+
                     @term:flush
             response
 
@@ -204,10 +252,21 @@ define-class SSO-Heatmap
                     &row >= start-row
                     &row < ((&self 'grid-height) + start-row)
                     &col >= (1 + (&self 'horiz-offset))
-                    
+
                 idx = (&self @ ('coord-to-blip-idx &view &row &col))
                 if (idx < (len (&self 'blips)))
                     match (&self 'state)
+                        'mirror
+                            &self @ ('reset-selection &view)
+
+                            (&self 'anchor-idx) = idx
+                            (&self 'tail-idx) = idx
+                            &self @ ('set-blip-color-mask &view idx)
+
+                            (&self 'state) = 'tail-hover
+
+                            response = 'range-hover
+
                         'no-selection
                             (&self 'anchor-idx) = idx
                             (&self 'tail-idx) = idx
@@ -215,12 +274,16 @@ define-class SSO-Heatmap
 
                             (&self 'state) = 'tail-hover
 
+                            response = 'range-hover
+
                         'anchor-hover
                             (&self 'anchor-idx) = idx
                             (&self 'tail-idx)   = idx
                             &self @ ('set-blip-color-mask &view idx)
 
                             (&self 'state) = 'tail-hover
+
+                            response = 'range-hover
 
                         'tail-hover
                             (&self 'tail-idx) = idx

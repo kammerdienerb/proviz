@@ -86,6 +86,8 @@ define-class FlameScope-View-Input-Handler
                     &view @ ('clear)
                     &view @ ('paint)
             else
+                range-hover-widget-name = nil
+
                 foreach widget-name (&view 'widgets)
                     &widget = ((&view 'widgets) widget-name)
                     response = nil
@@ -94,26 +96,50 @@ define-class FlameScope-View-Input-Handler
                     elif (&action == 'over)
                         response = (&widget @ ('mouse-over &view &row &col))
 
-                    if (response == 'range-selected)
-                        range = (&widget @ ('get-selected-range))
+                    match response
+                        'range-hover
+                            if (range-hover-widget-name == nil)
+                                range-hover-widget-name = widget-name
 
-                        &widget @ ('reset-selection &view)
+                        'range-selected
+                            range = (&widget @ ('get-selected-range))
 
-                        views <-
-                            "flamegraph" :
-                                (View 'new) rows cols
-                                    'name          : "Flame Graph"
-                                    'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
+                            foreach heatmap-widget-name (&view 'widgets)
+                                &heatmap-widget = ((&view 'widgets) heatmap-widget-name)
+                                if ((&heatmap-widget '__class__) == (' SSO-Heatmap))
+                                    &heatmap-widget @ ('reset-selection &view)
+                                unref &heatmap-widget
 
-                        set-view "flamegraph"
+                            views <-
+                                "flamegraph" :
+                                    (View 'new) rows cols
+                                        'name          : "Flame Graph"
+                                        'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
 
-                        &current-view @
-                            'add-widget "flamegraph"
-                                (Flame-Graph 'new) profile (&widget 'event) (range 0) (range 1) 2
+                            set-view "flamegraph"
 
-                        &current-view @ ('paint)
+                            &current-view @
+                                'add-widget "flamegraph"
+                                    (Flame-Graph 'new) profile (&widget 'event) (range 0) (range 1) 2
+
+                            &current-view @ ('paint)
+
                     unref &widget
 
+                if (range-hover-widget-name != nil)
+                    range = (((&view 'widgets) range-hover-widget-name) @ ('get-selected-range))
+
+                    did-paint-other-range = 0
+
+                    foreach widget-name (&view 'widgets)
+                        &widget = ((&view 'widgets) widget-name)
+                        if ((widget-name != range-hover-widget-name) and ((&widget '__class__) == (' SSO-Heatmap)))
+                            &widget @ ('set-mirror-range &view range)
+                            did-paint-other-range = 1
+                        unref &widget
+
+                    if did-paint-other-range
+                        @term:flush
 
 flamescope-command =
     fn (&profile)

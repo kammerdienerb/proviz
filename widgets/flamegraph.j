@@ -133,7 +133,7 @@ define-class Flame-Graph-Frame
         fn (&self &row &start-col &width)
             if ((&width >= 1) and (&row > 1))
                 text = (&self 'label)
-                
+
                 (&self 'row)   = &row
                 (&self 'col)   = &start-col
                 (&self 'width) = &width
@@ -208,8 +208,8 @@ define-class Flame-Graph
     'paint :
         fn (&self &view &vert-offset &horiz-offset)
             (&self 'base) @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
-            
-    'paint-frame :
+
+    'paint-hover-frame :
         fn (&self &view &row &col &color)
             &cur-frame = (&self 'base)
             out-of-bounds = 0
@@ -220,7 +220,7 @@ define-class Flame-Graph
                     if ((&col >= (&child 'col)) and (&col < ((&child 'col) + (&child 'width))))
                         matching-label = label
                     unref &child
-                
+
                 if (matching-label == nil)
                     out-of-bounds = 1
                 else
@@ -228,27 +228,33 @@ define-class Flame-Graph
                     unref &cur-frame
                     &cur-frame = &new-frame
                     unref &new-frame
-                    
+
             if (not out-of-bounds)
-                if (&color != nil)
-                    old-color = (&cur-frame 'color)
+                if (&color == nil)
+                    (&cur-frame 'color) = (&cur-frame 'save-color)
+                    &cur-frame -> 'save-color
+                else
+                    &cur-frame <- ('save-color : (&cur-frame 'color))
                     (&cur-frame 'color) = &color
-                    &view @ ('status-text (fmt "Frame: % Samples: %" (&cur-frame 'label) (&cur-frame 'count)))
+
                 &cur-frame @ ('paint (&cur-frame 'row) (&cur-frame 'col) (&cur-frame 'width))
-                @term:flush
-                if (&color != nil)
-                    (&cur-frame 'color) = old-color
+
+                &view @ ('status-text (fmt "Frame: % Samples: %" (&cur-frame 'label) (&cur-frame 'count)))
+
             not out-of-bounds
-            
+
     'mouse-over :
         fn (&self &view &row &col)
             if ((&self 'last-sel-row) and (&self 'last-sel-col))
-                &self @ ('paint-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)
-            painted = (&self @ ('paint-frame &view &row &col 0xff00ff))
-            
+                &self @ ('paint-hover-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)
+            painted = (&self @ ('paint-hover-frame &view &row &col 0xff00ff))
+
             if painted
                 (&self 'last-sel-row) = &row
                 (&self 'last-sel-col) = &col
             else
+                &view @ ('status-text "")
                 (&self 'last-sel-row) = 0
                 (&self 'last-sel-col) = 0
+
+            @term:flush
