@@ -1,3 +1,15 @@
+# Parses perf-script output. This is a bit of a complicated output
+# due to the number of possible fields on the first line of each sample.
+# As far as I can tell, the possibilities are:
+# 1. The process name
+# 2. The PID
+# 3. (Optional) the TID
+# 4. (Optional) square bracket number
+# 5. Time, followed by a colon
+# 6. (Optional) Count
+# 7. Event name
+# 8. Tracepoint fields. Can have multiple, separated by a comma and space.
+
 ends-in-colon-regex = "(.*):$"
 pid-regex = "([0-9]+)/([0-9])"
 
@@ -14,22 +26,29 @@ parse-perf-script =
                     split-line = (split &line " ")
                     line-len = (len split-line)
                     
-                    # The last field is always the event name
-                    event-match  = ((move (split-line (line-len - 1))) =~ ends-in-colon-regex)
-                    event = (event-match 1)
+                    # Find the last field that ends in a colon. We'll assume that this
+                    # is the event name. We'll also only consider the 5th, 6th, or 7th fields.
+                    event-field = 0
+                    repeat i line-len
+                        event-match  = ((split-line i) =~ ends-in-colon-regex)
+                        if (event-match != nil)
+                            event = (event-match 1)
+                            event-field = i
+                    if (event-field == 0)
+                        wlog (fmt "Failed to parse event from: %" &line)
                     
                     # Potentially get count from the second-to-last field
-                    if (endswith (split-line (line-len - 2)) ":")
+                    if (endswith (split-line (event-field - 1)) ":")
                         # Time is the second-to-last field, so there's no count
                         count = 1
-                        time-field = 2
+                        time-field = (event-field - 1)
                     else
                         # Count is the second-to-last field, and time is the third-to-last
-                        count = (parse-int (move (split-line (line-len - 2))))
-                        time-field = 3
+                        count = (parse-int (move (split-line (event-field - 1))))
+                        time-field = (event-field - 2)
                     
                     # Based on if count was there or not, get time (which will end in a colon)
-                    time-match = ((move (split-line (line-len - time-field))) =~ ends-in-colon-regex)
+                    time-match = ((move (split-line time-field)) =~ ends-in-colon-regex)
                     if (time-match != nil)
                         time = (parse-float (time-match 1))
                     else
@@ -37,24 +56,24 @@ parse-perf-script =
                         time = 0
                       
                     # If the bracketed number is present, the PID is one field earlier
-                    pid-field = (time-field + 1)
-                    if (startswith ((split-line (line-len - pid-field))) "[")
-                        pid-field = (pid-field + 1)
+                    pid-field = (time-field - 1)
+                    if (startswith ((split-line pid-field)) "[")
+                        -- pid-field
                         
-                    pid-match = ((split-line (line-len - pid-field)) =~ pid-regex)
+                    pid-match = ((split-line pid-field) =~ pid-regex)
                     if (pid-match != nil)
                         # We got a PID and TID
                         pid = (parse-int (pid-match 1))
                     else
-                        pid = (parse-int (move (split-line (line-len - pid-field))))
+                        pid = (parse-int (move (split-line pid-field)))
                         
                     cmd-name = ""
-                    repeat i (line-len - pid-field)
+                    repeat i pid-field
                         if (cmd-name == "")
                             cmd-name = (move (split-line i))
                         else
                             cmd-name = (fmt "% %" cmd-name (move (split-line i)))
-                        
+                            
                     stack = ""
                     leaf = "[unknown]"
                 elif (not (startswith &line "#"))
