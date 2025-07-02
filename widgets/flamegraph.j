@@ -30,7 +30,7 @@ define-class Flame-Graph-Frame
                 label = (substr label 0 ((len label) - 4))
             elif (label == "-")
                 type = 'divider
-
+                
             (frame 'label) = (move label)
             (frame 'type)  = type
             (frame 'color) = ((Flame-Graph-Frame 'get-color) type (rand))

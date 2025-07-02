@@ -235,8 +235,8 @@ define-class SSO-Heatmap
                                 i += start
                                 count += (((&self 'blips) i) 'count)
                                 &self @ ('set-blip-color-mask &view i)
-
-                            &view @ ('status-text (fmt "Samples: %" count))
+                                    
+                            &view @ ('status-text (fmt "Samples: % | Seconds: %" count (length * (options 'interval-time))))
 
                             response = 'range-hover
 
