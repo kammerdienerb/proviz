@@ -22,7 +22,7 @@ define-class Thief-Scope-Blip
                     row
                     (&self 'col)
                     (&self 'color)
-                
+
 define-class Thief-Scope-Guide-Blip
     'row   : 0
     'col   : 0
@@ -51,12 +51,12 @@ define-class Thief-Scope
     'width              : 0
     'start-row          : 0
     'event              : ""
-    
+
     'guide-row          : 0
     'text-row           : 0
     'blip-row           : 0
     'grid-height        : 0
-    
+
     'max-interval-count : 0
     'leaves             : (list)
     'blips              : (list)
@@ -281,7 +281,7 @@ define-class Thief-Scope
 
                 foreach &blip (&self 'guide-blips)
                     &blip @ ('paint &view (&self 'blip-row))
-                    
+
                 repeat c (&view 'width)
                     @term:set-cell-bg   (&self 'text-row) (c + 1) 0x002000
                     @term:set-cell-char (&self 'text-row) (c + 1) " "

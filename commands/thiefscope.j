@@ -119,7 +119,7 @@ thiefscope-command =
         &current-view @ ('set-input-handler (new-instance ThiefScope-View-Input-Handler))
 
         offset = 2
-        foreach event (&profile 'num-events-by-type)
+        foreach event (&profile 'event-count-by-type)
             name = (fmt "thiefscope/%" event)
             &current-view @
                 'add-widget name

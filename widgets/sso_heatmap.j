@@ -46,19 +46,15 @@ define-class SSO-Heatmap
 
             largest-count = 0
             foreach &interval (&profile 'intervals)
-                count = 0
-                if (&event in (&interval 'events-by-type))
-                    foreach &sample ((&interval 'events-by-type) &event)
-                        count += (&sample 'count)
-                    largest-count = (max largest-count count)
-                &interval <- ('eustall-count : count)
+                if (&event in (&interval 'event-count-by-type))
+                    largest-count = (max largest-count ((&interval 'event-count-by-type) &event))
 
             &grid-height = (map 'grid-height)
 
             row = (&start-row + &grid-height)
             col = 1
             foreach &interval (&profile 'intervals)
-                &count = (&interval 'eustall-count)
+                &count = (select (&event in (&interval 'event-count-by-type)) ((&interval 'event-count-by-type) &event) 0)
                 value  = (select (largest-count == 0) 0.0 ((float &count) / largest-count))
                 color  =
                     0xff0000 |
@@ -235,7 +231,7 @@ define-class SSO-Heatmap
                                 i += start
                                 count += (((&self 'blips) i) 'count)
                                 &self @ ('set-blip-color-mask &view i)
-                                    
+
                             &view @ ('status-text (fmt "Samples: % | Seconds: %" count (length * (options 'interval-time))))
 
                             response = 'range-hover

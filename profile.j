@@ -1,10 +1,12 @@
 define-class Interval
-    'start-time     : 0
-    'end-time       : 0
-    'events-by-type : (object)
+    'start-time          : 0
+    'end-time            : 0
+    'events-by-type      : (object)
+    'event-count-by-type : (object)
 
     'push-sample :
         fn (&self &sample)
+            (get-or-insert (&self 'event-count-by-type) (&sample 'type) 0) += (&sample 'count)
             append
                 get-or-insert (&self 'events-by-type) (&sample 'type) (list)
                 move &sample
@@ -14,12 +16,12 @@ sample-time-cmp =
         (&a 'time) < (&b 'time)
 
 define-class Profile
-    'strings            : (object)
-    'sid                : 0
-    'samples            : (list)
-    'intervals          : (list)
-    'num-events-by-type : (object)
-    'default-event      : nil
+    'strings             : (object)
+    'sid                 : 0
+    'samples             : (list)
+    'intervals           : (list)
+    'event-count-by-type : (object)
+    'default-event       : nil
 
     'new :
         fn ()
@@ -49,7 +51,7 @@ define-class Profile
             foreach &sample (&self 'samples)
                 if (&def-evt == nil)
                     &def-evt = (&sample 'type)
-                (get-or-insert (&self 'num-events-by-type) (&sample 'type) 0) += (&sample 'count)
+                (get-or-insert (&self 'event-count-by-type) (&sample 'type) 0) += (&sample 'count)
 
                 time = (&sample 'time)
 
