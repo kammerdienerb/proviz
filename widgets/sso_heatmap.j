@@ -54,15 +54,15 @@ define-class SSO-Heatmap
             row = (&start-row + &grid-height)
             col = 1
             foreach &interval (&profile 'intervals)
-                &count = (select (&event in (&interval 'event-count-by-type)) ((&interval 'event-count-by-type) &event) 0)
-                value  = (select (largest-count == 0) 0.0 ((float &count) / largest-count))
-                color  =
+                count = (select (&event in (&interval 'event-count-by-type)) ((&interval 'event-count-by-type) &event) 0)
+                value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
+                color =
                     0xff0000 |
                         ((sint ((1.0 - value) * 255)) << 8) |
                             sint ((1.0 - value) * 255)
 
                 append (map 'blips)
-                    (SSO-Heatmap-Blip 'new) row col color &count
+                    (SSO-Heatmap-Blip 'new) row col color count
 
                 if (row == (&start-row + 1))
                     row = (&start-row + &grid-height)
