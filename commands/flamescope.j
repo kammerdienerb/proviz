@@ -79,6 +79,7 @@ define-class FlameScope-View-Input-Handler
                         (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
                     if ('last-right-button-col in &view)
                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
+                        (&view 'horiz-offset) = (min (&view 'horiz-offset) 0)
 
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
