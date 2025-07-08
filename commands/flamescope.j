@@ -1,4 +1,4 @@
-define-class Sub-FlameGraph-View-Input-Handler
+define-class FlameScope-Sub-FlameGraph-View-Input-Handler
     'on-key :
         fn (&self &view &key)
             match &key
@@ -115,7 +115,7 @@ define-class FlameScope-View-Input-Handler
                                 "flamegraph" :
                                     (View 'new) rows cols
                                         'name          : "Flame Graph"
-                                        'input-handler : (new-instance Sub-FlameGraph-View-Input-Handler)
+                                        'input-handler : (new-instance Flame-Scope-Sub-FlameGraph-View-Input-Handler)
 
                             set-view "flamegraph"
 
