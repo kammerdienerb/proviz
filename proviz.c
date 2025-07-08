@@ -16,9 +16,11 @@
 #include "parsers/perf_script_parser.j.h"
 #include "options.j.h"
 #include "profile.j.h"
+#include "widgets/line_graph.j.h"
 #include "widgets/sso_heatmap.j.h"
 #include "widgets/flamegraph.j.h"
 #include "widgets/thief_scope.j.h"
+#include "commands/plot.j.h"
 #include "commands/flamegraph.j.h"
 #include "commands/flamescope.j.h"
 #include "commands/thiefscope.j.h"
@@ -246,6 +248,7 @@ static Julie_Status j_term_exit(Julie_Interp *interp, Julie_Value *expr, unsigne
 static Julie_Status j_term_clear(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_flush(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_set_cell_bg(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
+static Julie_Status j_term_unset_cell_bg(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_set_cell_fg(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_set_cell_char(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 
@@ -266,6 +269,7 @@ int main(int argc, char **argv) {
     JULIE_BIND_FN("@term:clear",         j_term_clear);
     JULIE_BIND_FN("@term:flush",         j_term_flush);
     JULIE_BIND_FN("@term:set-cell-bg",   j_term_set_cell_bg);
+    JULIE_BIND_FN("@term:unset-cell-bg", j_term_unset_cell_bg);
     JULIE_BIND_FN("@term:set-cell-fg",   j_term_set_cell_fg);
     JULIE_BIND_FN("@term:set-cell-char", j_term_set_cell_char);
 
@@ -282,9 +286,11 @@ int main(int argc, char **argv) {
     LOAD_J(options);
     LOAD_J(profile);
     LOAD_J(view);
+    LOAD_J(line_graph, widgets);
     LOAD_J(sso_heatmap, widgets);
     LOAD_J(flamegraph, widgets);
     LOAD_J(thief_scope, widgets);
+    LOAD_J(plot, commands);
     LOAD_J(flamegraph, commands);
     LOAD_J(flamescope, commands);
     LOAD_J(thiefscope, commands);
@@ -1083,7 +1089,7 @@ static void sig_handler(int sig) {
 
     /* Exit the terminal. */
     restore_term();
-    
+
     print_julie_output();
 
     /* Do the real signal. */
@@ -1181,6 +1187,19 @@ static void set_cell_bg(unsigned row, unsigned col, unsigned color) {
     cell         = &(update_screen->cells[idx]);
     cell->bg     = color;
     cell->bg_set = 1;
+}
+
+static void unset_cell_bg(unsigned row, unsigned col) {
+    unsigned     idx;
+    Screen_Cell *cell;
+
+    if (row == 0 || col == 0 || row > term_height || col > term_width) { return; }
+
+    idx = ((row - 1) * term_width) + (col - 1);
+
+    cell         = &(update_screen->cells[idx]);
+    cell->bg     = 0;
+    cell->bg_set = 0;
 }
 
 static void set_cell_fg(unsigned row, unsigned col, unsigned color) {
@@ -1474,6 +1493,59 @@ static Julie_Status j_term_set_cell_bg(Julie_Interp *interp, Julie_Value *expr, 
 
 out_free_color:;
     julie_free_value(interp, color);
+out_free_col:;
+    julie_free_value(interp, col);
+out_free_row:;
+    julie_free_value(interp, row);
+
+out:;
+    return status;
+}
+
+static Julie_Status j_term_unset_cell_bg(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *row;
+    Julie_Value  *col;
+
+    status = JULIE_SUCCESS;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        *result = NULL;
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &row);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_INTEGER(row->type)) {
+        *result = NULL;
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], _JULIE_INTEGER, row->type);
+        goto out_free_row;
+    }
+
+    status = julie_eval(interp, values[1], &col);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out_free_row;
+    }
+
+    if (!JULIE_TYPE_IS_INTEGER(col->type)) {
+        *result = NULL;
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], _JULIE_INTEGER, col->type);
+        goto out_free_col;
+    }
+
+    unset_cell_bg(row->uint, col->uint);
+
+    *result = julie_nil_value(interp);
+
 out_free_col:;
     julie_free_value(interp, col);
 out_free_row:;
