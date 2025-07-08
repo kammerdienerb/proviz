@@ -38,12 +38,15 @@ profile := nil
         match (options 'COMMAND)
             "flamescope"
                 (flamescope-command profile)
-                
+
             "thiefscope"
                 (thiefscope-command profile)
-            
+
             "flamegraph"
                 (flamegraph-command profile)
+
+            "plot"
+                (plot-command profile)
 
         &current-view @ ('paint)
 
@@ -54,7 +57,7 @@ profile := nil
 @on-mouse =
     fn (&type &action &button &row &col)
         &current-view @ ('on-mouse &type &action &button &row &col)
-        
+
 @on-resize =
     fn (&rows &cols)
         (&current-view 'height) = &rows
