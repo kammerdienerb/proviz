@@ -4,6 +4,12 @@ define-class FlameGraph-View-Input-Handler
             match &key
                 "q"
                     @term:exit
+                "esc"
+                    foreach widget-name (&view 'widgets)
+                        &widget = ((&view 'widgets) widget-name)
+                        if ((&widget '__class__) == (' Flame-Graph))
+                            &widget @ ('reset-zoom &view)
+                        unref &widget
                 "up"
                     ++ (&view 'vert-offset)
                     &view @ ('clear)
@@ -38,8 +44,11 @@ define-class FlameGraph-View-Input-Handler
                 foreach widget-name (&view 'widgets)
                     &widget = ((&view 'widgets) widget-name)
                     response = nil
-                    if (&action == 'over)
+                    if ((&action == 'down) and (&button == 'left))
+                        response = (&widget @ ('mouse-click &view &row &col))
+                    elif (&action == 'over)
                         response = (&widget @ ('mouse-over &view &row &col))
+                    unref &widget
 
 flamegraph-command =
     fn (&profile)

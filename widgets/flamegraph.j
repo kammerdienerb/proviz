@@ -30,7 +30,7 @@ define-class Flame-Graph-Frame
                 label = (substr label 0 ((len label) - 4))
             elif (label == "-")
                 type = 'divider
-                
+
             (frame 'label) = (move label)
             (frame 'type)  = type
             (frame 'color) = ((Flame-Graph-Frame 'get-color) type (rand))
@@ -173,6 +173,7 @@ define-class Flame-Graph-Frame
 
 define-class Flame-Graph
     'base          : nil
+    'zoom-stack    : ""
     'last-sel-row  : 0
     'last-sel-col  : 0
 
@@ -208,6 +209,14 @@ define-class Flame-Graph
     'paint-hover-frame :
         fn (&self &view &row &col &color)
             &cur-frame = (&self 'base)
+
+            foreach zframe (splits (&self 'zoom-stack) ";")
+                if (zframe in (&cur-frame 'children))
+                    &new-cur-frame = ((&cur-frame 'children) zframe)
+                    unref &cur-frame
+                    &cur-frame = &new-cur-frame
+                    unref &new-cur-frame
+
             out-of-bounds = 0
             while ((not out-of-bounds) and ((&cur-frame 'row) != &row))
                 matching-label = nil
@@ -241,12 +250,88 @@ define-class Flame-Graph
 
     'paint :
         fn (&self &view &vert-offset &horiz-offset)
+            &view @ ('clear)
+
             if ((&self 'last-sel-row) and (&self 'last-sel-col))
                 &self @ ('paint-hover-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)
+
             &view @ ('status-text "")
             (&self 'last-sel-row) = 0
             (&self 'last-sel-col) = 0
-            (&self 'base) @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
+
+            &base = (&self 'base)
+
+            foreach zframe (splits (&self 'zoom-stack) ";")
+                if (zframe in (&base 'children))
+                    &new-base = ((&base 'children) zframe)
+                    unref &base
+                    &base = &new-base
+                    unref &new-base
+
+            &base @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
+
+    'reset-zoom :
+        fn (&self &view)
+            if ((&self 'last-sel-row) and (&self 'last-sel-col))
+                &self @ ('paint-hover-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)
+
+            &view @ ('status-text "")
+            (&self 'last-sel-row) = 0
+            (&self 'last-sel-col) = 0
+
+            (&self 'zoom-stack) = ""
+
+            &self @ ('paint &view (&view 'vert-offset) (&view 'horiz-offset))
+
+            @term:flush
+
+    'mouse-click :
+        fn (&self &view &row &col)
+            &cur-frame = (&self 'base)
+
+            foreach zframe (splits (&self 'zoom-stack) ";")
+                if (zframe in (&cur-frame 'children))
+                    &new-cur-frame = ((&cur-frame 'children) zframe)
+                    unref &cur-frame
+                    &cur-frame = &new-cur-frame
+                    unref &new-cur-frame
+
+            new-zstack = (&self 'zoom-stack)
+
+            out-of-bounds = 0
+            while ((not out-of-bounds) and ((&cur-frame 'row) != &row))
+                matching-label = nil
+                foreach label (&cur-frame 'children)
+                    &child = ((&cur-frame 'children) label)
+                    if ((&col >= (&child 'col)) and (&col < ((&child 'col) + (&child 'width))))
+                        matching-label = label
+                    unref &child
+
+                if (matching-label == nil)
+                    out-of-bounds = 1
+                else
+                    new-zstack = (fmt "%;%" (move new-zstack) matching-label)
+                    &new-frame = ((&cur-frame 'children) matching-label)
+                    unref &cur-frame
+                    &cur-frame = &new-frame
+                    unref &new-frame
+
+            if (not out-of-bounds)
+                if (startswith new-zstack ";")
+                    new-zstack = (substr new-zstack 1 ((len new-zstack) - 1))
+
+                if ((&self 'last-sel-row) and (&self 'last-sel-col))
+                    &self @ ('paint-hover-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)
+
+                &view @ ('status-text "")
+                (&self 'last-sel-row) = 0
+                (&self 'last-sel-col) = 0
+
+                (&self 'zoom-stack) = new-zstack
+
+                &self @ ('paint &view (&view 'vert-offset) (&view 'horiz-offset))
+
+                @term:flush
 
     'mouse-over :
         fn (&self &view &row &col)

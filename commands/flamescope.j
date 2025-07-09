@@ -4,6 +4,12 @@ define-class FlameScope-Sub-FlameGraph-View-Input-Handler
             match &key
                 "q"
                     set-view "main"
+                "esc"
+                    foreach widget-name (&view 'widgets)
+                        &widget = ((&view 'widgets) widget-name)
+                        if ((&widget '__class__) == (' Flame-Graph))
+                            &widget @ ('reset-zoom &view)
+                        unref &widget
                 "up"
                     ++ (&view 'vert-offset)
                     &view @ ('clear)
@@ -39,8 +45,11 @@ define-class FlameScope-Sub-FlameGraph-View-Input-Handler
                 foreach widget-name (&view 'widgets)
                     &widget = ((&view 'widgets) widget-name)
                     response = nil
-                    if (&action == 'over)
+                    if ((&action == 'down) and (&button == 'left))
+                        response = (&widget @ ('mouse-click &view &row &col))
+                    elif (&action == 'over)
                         response = (&widget @ ('mouse-over &view &row &col))
+                    unref &widget
 
 define-class FlameScope-View-Input-Handler
     'on-key :
@@ -115,7 +124,7 @@ define-class FlameScope-View-Input-Handler
                                 "flamegraph" :
                                     (View 'new) rows cols
                                         'name          : "Flame Graph"
-                                        'input-handler : (new-instance Flame-Scope-Sub-FlameGraph-View-Input-Handler)
+                                        'input-handler : (new-instance FlameScope-Sub-FlameGraph-View-Input-Handler)
 
                             set-view "flamegraph"
 
