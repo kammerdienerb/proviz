@@ -321,6 +321,7 @@ const char *julie_type_string(Julie_Type type);
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <regex.h>
+#include <time.h>
 
 #define ALIGN_UP(x, align)   ((__typeof(x))((((unsigned long long)(x)) + ((unsigned long long)align)) & ~(((unsigned long long)align) - 1ull)))
 #define ALIGN_DOWN(x, align) ((__typeof(x))(((unsigned long long)(x)) & ~(((unsigned long long)align) - 1ull)))
@@ -10816,6 +10817,8 @@ out:;
 Julie_Interp *julie_init_interp(void) {
     Julie_Interp *interp;
     int           i;
+
+    srandom(time(NULL));
 
     posix_memalign((void**)&interp, 64, sizeof(*interp));
 

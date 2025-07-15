@@ -6,6 +6,7 @@ define-class Line-Graph
     'tail-idx    : nil
     'event       : ""
     'points      : (list)
+    'color       : 0
     'glyphs      :
         object
             -1             : "⡀"
@@ -51,6 +52,10 @@ define-class Line-Graph
                 value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
                 append (graph 'points) (count : value)
 
+            (graph 'color) |= (156 + ((rand) % 100))
+            (graph 'color) |= ((156 + ((rand) % 100)) << 8)
+            (graph 'color) |= ((156 + ((rand) % 100)) << 16)
+
             move graph
 
     'get-braille-glyph :
@@ -86,7 +91,7 @@ define-class Line-Graph
 
             c = 1
             foreach char (chars (&self 'event))
-                @term:set-cell-fg   start-row c 0xffffff
+                @term:set-cell-fg   start-row c (&self 'color)
                 @term:set-cell-char start-row c char
                 ++ c
 
@@ -111,6 +116,7 @@ define-class Line-Graph
                     glyph = (&self @ ('get-braille-glyph value next-value))
 
                     @term:set-cell-char r c glyph
+                    @term:set-cell-fg   r c (&self 'color)
 
                     unref &point
                     if (is-bound &next-point)
