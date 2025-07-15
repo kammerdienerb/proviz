@@ -6,6 +6,8 @@
 #include <signal.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <errno.h>
+#include <stdarg.h>
 
 #define JULIE_IMPL
 #include "julie.h"
@@ -219,16 +221,19 @@ typedef struct {
 
 
 
-static Julie_Interp   *interp;
-static struct termios  save_term;
-static int             term_set;
-static unsigned        term_height;
-static unsigned        term_width;
-static int             term_resized;
-static Screen          screen1;
-static Screen          screen2;
-static Screen         *update_screen = &screen1;
-static Screen         *render_screen = &screen2;
+static Julie_Interp       *interp;
+static struct termios      save_term;
+static int                 term_set;
+static unsigned            term_height;
+static unsigned            term_width;
+static int                 term_resized;
+static Screen              screen1;
+static Screen              screen2;
+static Screen             *update_screen = &screen1;
+static Screen             *render_screen = &screen2;
+static char               *tty_buff;
+static unsigned long long  tty_buff_size;
+static unsigned long long  tty_buff_cap;
 
 static FILE *julie_file = NULL;
 
@@ -1283,23 +1288,98 @@ static int diff_and_swap_screens(void) {
     return any_dirty;
 }
 
+static char *tty_reserve(unsigned long long n_bytes) {
+    char *ptr;
+
+    if (tty_buff_cap == 0) {
+        tty_buff_cap = 512;
+        tty_buff = realloc(tty_buff, tty_buff_cap);
+    }
+
+    while (tty_buff_size + n_bytes > tty_buff_cap) {
+        tty_buff_cap *= 2;
+        tty_buff = realloc(tty_buff, tty_buff_cap);
+    }
+
+    ptr = tty_buff + tty_buff_size;
+
+    tty_buff_size += n_bytes;
+
+    return ptr;
+}
+
+static void tty_write(char *data, unsigned long long n_bytes) {
+    char *ptr;
+
+    ptr = tty_reserve(n_bytes);
+    memcpy(ptr, data, n_bytes);
+}
+
+static void tty_pop(unsigned long long n_bytes) {
+    if (n_bytes > tty_buff_size) {
+        tty_buff_size = 0;
+    } else {
+        tty_buff_size -= n_bytes;
+    }
+}
+
+static void tty_printf(const char *fmt, ...) {
+    int   n_bytes;
+    char *buff;
+
+    va_list args;
+
+    va_start(args, fmt);
+
+    n_bytes = vsnprintf(NULL, 0, fmt, args);
+    buff = tty_reserve(n_bytes + 1);
+    vsnprintf(buff, n_bytes + 1, fmt, args);
+    tty_pop(1);
+
+    va_end(args);
+}
+
+static void tty_flush(void) {
+    ssize_t total;
+    ssize_t n;
+
+    total = 0;
+
+    errno = 0;
+
+    do {
+        n = write(1, tty_buff + total, tty_buff_size - total);
+        if (n < 0) {
+            if (errno != EAGAIN && errno != EINTR) {
+                break;
+            }
+        } else {
+            total += n;
+        }
+    } while (total < tty_buff_size);
+
+    tty_buff_size = 0;
+}
+
 void flush_screen(void) {
     Screen_Cell *cell;
     unsigned     row;
     unsigned     col;
 
+    fflush(stdout);
+
     if (diff_and_swap_screens() == 0) { return; }
 
-    printf("\033[?2026h");
+    tty_printf("\033[?2026h");
 
-    printf(TERM_CURSOR_HOME);
+    tty_printf(TERM_CURSOR_HOME);
     render_screen->cur_col = render_screen->cur_row = 1;
 
     render_screen->cur_bg_set = 0;
     render_screen->cur_bg     = 0;
     render_screen->cur_fg_set = 0;
     render_screen->cur_fg     = 0;
-    printf(TERM_RESET);
+    tty_printf(TERM_RESET);
 
     cell = render_screen->cells;
 
@@ -1308,14 +1388,14 @@ void flush_screen(void) {
             if (cell->dirty) {
                 if (render_screen->cur_row != row
                 &&  render_screen->cur_col != col) {
-                    printf("\033[%d;%dH", row, col);
+                    tty_printf("\033[%d;%dH", row, col);
                     render_screen->cur_row = row;
                     render_screen->cur_col = col;
                 } else if (render_screen->cur_row != row) {
-                    printf("\033[%dd", row);
+                    tty_printf("\033[%dd", row);
                     render_screen->cur_row = row;
                 } else if (render_screen->cur_col != col) {
-                    printf("\033[%dG", col);
+                    tty_printf("\033[%dG", col);
                     render_screen->cur_col = col;
                 }
 
@@ -1324,17 +1404,17 @@ void flush_screen(void) {
                 ||  (cell->fg_set     != render_screen->cur_fg_set)
                 ||  (cell->fg         != render_screen->cur_fg)) {
 
-                    printf("\033[0m");
+                    tty_printf("\033[0m");
 
                     if (cell->bg_set) {
-                        printf("\033[48;2;%d;%d;%dm",
+                        tty_printf("\033[48;2;%d;%d;%dm",
                             (cell->bg & 0xff0000) >> 16,
                             (cell->bg & 0x00ff00) >> 8,
                             cell->bg & 0x0000ff);
                     }
 
                     if (cell->fg_set) {
-                        printf("\033[38;2;%d;%d;%dm",
+                        tty_printf("\033[38;2;%d;%d;%dm",
                             (cell->fg & 0xff0000) >> 16,
                             (cell->fg & 0x00ff00) >> 8,
                             cell->fg & 0x0000ff);
@@ -1346,10 +1426,11 @@ void flush_screen(void) {
                     render_screen->cur_fg_set = cell->fg_set;
                 }
 
+
                 if (cell->glyph.bytes[0]) {
-                    fwrite(&cell->glyph.c, 1, glyph_len(&cell->glyph), stdout);
+                    tty_write(&cell->glyph.c, glyph_len(&cell->glyph));
                 } else {
-                    fwrite(" ", 1, 1, stdout);
+                    tty_write(" ", 1);
                 }
 
                 render_screen->cur_col += 1;
@@ -1360,7 +1441,9 @@ void flush_screen(void) {
         }
     }
 
-    printf("\033[?2026l");
+    tty_printf("\033[?2026l");
+
+    tty_flush();
 }
 
 static Julie_Status j_term_exit(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
