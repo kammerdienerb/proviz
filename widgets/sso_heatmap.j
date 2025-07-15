@@ -66,9 +66,9 @@ define-class SSO-Heatmap
 
                 if (row == (&start-row + 1))
                     row = (&start-row + &grid-height)
-                    col += 1
+                    ++ col
                 else
-                    row -= 1
+                    -- row
 
             move map
 
@@ -77,11 +77,12 @@ define-class SSO-Heatmap
             (&self 'vert-offset) = &vert-offset
             (&self 'horiz-offset) = &horiz-offset
             row = ((&self 'start-row) + &vert-offset)
-            c = 1
+            col = 1
             foreach char (chars (&self 'event))
-                @term:set-cell-fg   row c 0xffffff
-                @term:set-cell-char row c char
-                c += 1
+                @term:set-cell-fg   row col 0xffffff
+                @term:set-cell-char row col char
+                ++ col
+
             foreach &blip (&self 'blips)
                 &blip @ ('paint &view &vert-offset &horiz-offset)
 
