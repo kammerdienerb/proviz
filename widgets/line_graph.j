@@ -90,30 +90,33 @@ define-class Line-Graph
                 @term:set-cell-char start-row c char
                 ++ c
 
-            c = (1 + &horiz-offset)
 
-            length = (len (&self 'points))
+            offset = (max 0 (0 - &horiz-offset))
 
             bottom = (start-row + (&self 'height))
 
-            repeat idx length
-                &point = ((&self 'points) idx)
-                if (idx < (length - 1))
-                    &next-point = ((&self 'points) (idx + 1))
+            c = 1
+            repeat idx (&view 'width)
+                idx += offset
 
-                value      = (&point 1)
-                next-value = (select (is-bound &next-point) (&next-point 1) nil)
+                if (idx < (len (&self 'points)))
+                    &point = ((&self 'points) idx)
+                    if (idx < ((len (&self 'points)) - 1))
+                        &next-point = ((&self 'points) (idx + 1))
 
-                r = (bottom - (sint (value * ((&self 'height) - 1))))
-                glyph = (&self @ ('get-braille-glyph value next-value))
+                    value      = (&point 1)
+                    next-value = (select (is-bound &next-point) (&next-point 1) nil)
 
-                @term:set-cell-char r c glyph
+                    r = (bottom - (sint (value * ((&self 'height) - 1))))
+                    glyph = (&self @ ('get-braille-glyph value next-value))
 
-                unref &point
-                if (is-bound &next-point)
-                    unref &next-point
+                    @term:set-cell-char r c glyph
 
-                ++ c
+                    unref &point
+                    if (is-bound &next-point)
+                        unref &next-point
+
+                    ++ c
 
     'set-col-color :
         fn (&self &view &idx)
