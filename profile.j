@@ -25,7 +25,11 @@ define-class Profile
 
     'new :
         fn ()
-            new-instance Profile
+            p = (new-instance Profile)
+
+            (p 'strings) <- (0 : "")
+
+            move p
 
     'string-id :
         fn (&self &s)

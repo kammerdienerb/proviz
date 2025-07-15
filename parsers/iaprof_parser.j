@@ -27,6 +27,15 @@ parse-iaprof =
                 "interval_start"
                     time = (parse-float (split-line 2))
 
+                "metric"
+                    &profile @
+                        'push-sample
+                            object
+                                'type  : (move (split-line 1))
+                                'time  : time
+                                'stack : 0
+                                'count : (parse-int (split-line 2))
+
             if (((++ ln) % update) == 0)
                 &view @ ('loading-bar-update ((float ln) / length))
 
