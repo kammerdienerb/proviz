@@ -27,7 +27,7 @@ define-class Profile
         fn ()
             p = (new-instance Profile)
 
-            (p 'strings) <- (0 : "")
+            (p 'strings) <- ("" : 0)
 
             move p
 
@@ -36,7 +36,7 @@ define-class Profile
             get-or-insert (&self 'strings) &s (++ (&self 'sid))
 
     'get-string :
-        fn (&id)
+        fn (&self &id)
             (&self 'strings) &id
 
     'push-sample :

@@ -141,7 +141,8 @@ define-class Flame-Graph-Frame
                 if (&width > 1)
                     if (((len text) > (&width - 1)) and (&width > 2))
                         text = (fmt "%.." (substr text 0 (&width - 3)))
-                    text = (substr text 0 (&width - 1))
+                    if ((len text) > 0)
+                        text = (substr text 0 (&width - 1))
                 else
                     text = ""
 
@@ -189,12 +190,11 @@ define-class Flame-Graph
                 &interval = ((&profile 'intervals) (i + &start))
                 if (&event in (&interval 'events-by-type))
                     foreach &sample ((&interval 'events-by-type) &event)
-                        if ('stack in &sample)
+                        if (('stack in &sample) and ((&sample 'stack) != 0))
                             (get-or-insert counts (&sample 'stack) 0) += (&sample 'count)
 
-            # Construct the flame graph from the stacks object
             foreach stack-id counts
-                flame-stack = (splits ((&profile 'strings) stack-id) ";")
+                flame-stack = (splits (&profile @ ('get-string stack-id)) ";")
                 &base @ ('add-flame flame-stack (counts stack-id))
 
             flame @ ('sort)
