@@ -26,10 +26,7 @@ define-class View
 
     'status-text :
         fn (&self &text)
-            repeat col (&self 'width)
-                @term:set-cell-bg   1 (col + 1) 0x000000
-                @term:set-cell-fg   1 (col + 1) 0xffffff
-                @term:set-cell-char 1 (col + 1) " "
+            @term:clear-row 1
             col = 1
             foreach char (chars &text)
                 @term:set-cell-char 1 col char
@@ -47,6 +44,7 @@ define-class View
 
             text = (fmt "% 0\%" &label)
 
+            @term:clear-row 1
             col = 1
             foreach char (chars text)
                 @term:set-cell-fg   1 col 0x0000ff
@@ -57,9 +55,7 @@ define-class View
     'loading-bar-fini :
         fn (&self)
             (&self 'loading-bar-label) = ""
-            repeat col (&self 'width)
-                @term:set-cell-bg   1 (col + 1) 0x000000
-                @term:set-cell-char 1 (col + 1) " "
+            @term:clear-row 1
             @term:flush
 
     'loading-bar-update :

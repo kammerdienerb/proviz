@@ -251,6 +251,7 @@ static void key_event(int key);
 
 static Julie_Status j_term_exit(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_clear(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
+static Julie_Status j_term_clear_row(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_flush(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_set_cell_bg(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
 static Julie_Status j_term_unset_cell_bg(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result);
@@ -272,6 +273,7 @@ int main(int argc, char **argv) {
 
     JULIE_BIND_FN("@term:exit",          j_term_exit);
     JULIE_BIND_FN("@term:clear",         j_term_clear);
+    JULIE_BIND_FN("@term:clear-row",     j_term_clear_row);
     JULIE_BIND_FN("@term:flush",         j_term_flush);
     JULIE_BIND_FN("@term:set-cell-bg",   j_term_set_cell_bg);
     JULIE_BIND_FN("@term:unset-cell-bg", j_term_unset_cell_bg);
@@ -1181,6 +1183,26 @@ static void restore_term(void) {
     tcsetattr(0, TCSAFLUSH, &save_term);
 }
 
+static void clear_row(unsigned row) {
+    unsigned     col;
+    unsigned     idx;
+    Screen_Cell *cell;
+
+    if (row == 0 || row > term_height) { return; }
+
+    for (col = 1; col <= term_width; col += 1) {
+        idx = ((row - 1) * term_width) + (col - 1);
+
+        cell          = &(update_screen->cells[idx]);
+        cell->bg      = 0;
+        cell->bg_set  = 0;
+        cell->fg      = 0;
+        cell->fg_set  = 0;
+
+        memset(&cell->glyph.bytes, 0, sizeof(cell->glyph.bytes));
+    }
+}
+
 static void set_cell_bg(unsigned row, unsigned col, unsigned color) {
     unsigned     idx;
     Screen_Cell *cell;
@@ -1491,6 +1513,42 @@ static Julie_Status j_term_clear(Julie_Interp *interp, Julie_Value *expr, unsign
 
     *result = julie_nil_value(interp);
 
+out:;
+    return status;
+}
+
+static Julie_Status j_term_clear_row(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *row;
+
+    status = JULIE_SUCCESS;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        *result = NULL;
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &row);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_INTEGER(row->type)) {
+        *result = NULL;
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], _JULIE_INTEGER, row->type);
+        goto out_free_row;
+    }
+
+    clear_row(row->uint);
+
+    *result = julie_nil_value(interp);
+
+out_free_row:;
+    julie_free_value(interp, row);
 out:;
     return status;
 }
