@@ -14,7 +14,7 @@ parse-iaprof =
                     &profile @
                         'push-sample
                             object
-                                'type  : "EU Stall"
+                                'type  : "iaprof:EU-stall"
                                 'time  : time
                                 'stack : (string-id-map (parse-int (split-line 1)))
                                 'count : (parse-int (split-line 4))
@@ -31,7 +31,7 @@ parse-iaprof =
                     &profile @
                         'push-sample
                             object
-                                'type  : (move (split-line 1))
+                                'type  : (fmt "iaprof:%" (move (split-line 1)))
                                 'time  : time
                                 'stack : 0
                                 'count : (parse-int (split-line 2))
@@ -50,3 +50,6 @@ looks-like-iaprof =
 
 register-parser          "iaprof" (' parse-iaprof)
 register-format-detector "iaprof" (' looks-like-iaprof)
+
+register-accum-fn "iaprof:frequency-MHz" (' sample-accum-avg)
+register-accum-fn "iaprof:busy-percent"  (' sample-accum-avg)

@@ -1,8 +1,41 @@
+sample-accum-fns := (object)
+
+register-accum-fn =
+    fn (&event-name &accum-fn-sym)
+        if (&event-name in sample-accum-fns)
+            wlog "reregistering % accumulator function" &event-name
+            (sample-accum-fns &event-name) = &accum-fn-sym
+        else
+            sample-accum-fns <- (&event-name : &accum-fn-sym)
+
+sample-accum-sum =
+    fn (&samples)
+        sum = 0
+        foreach &sample &samples
+            sum += (&sample 'count)
+        sum
+
+sample-accum-avg =
+    fn (&samples)
+        sum = 0
+        if (len &samples)
+            foreach &sample &samples
+                sum += (&sample 'count)
+            sum /= (len &samples)
+        sum
+
+accum-samples =
+    fn (&event-name &samples)
+        select (&event-name in sample-accum-fns)
+            ((sample-accum-fns &event-name)) &samples
+            sample-accum-sum &samples
+
 define-class Interval
     'start-time          : 0
     'end-time            : 0
     'events-by-type      : (object)
     'event-count-by-type : (object)
+    'event-accum-by-type : (object)
 
     'push-sample :
         fn (&self &sample)
@@ -10,6 +43,12 @@ define-class Interval
             append
                 get-or-insert (&self 'events-by-type) (&sample 'type) (list)
                 move &sample
+
+    'accum :
+        fn (&self)
+            foreach event-name (&self 'events-by-type)
+                (&self 'event-accum-by-type) <-
+                    event-name : (accum-samples event-name ((&self 'events-by-type) event-name))
 
 sample-time-cmp =
     fn (&a &b)
@@ -45,7 +84,7 @@ define-class Profile
 
     'postprocess :
         fn (&self &view)
-            length         = ((len (&self 'samples)) + (len (&self 'strings)))
+            length         = (len (&self 'samples))
             update         = (length / (&view 'width))
             ln             = 0
             cur-time       = 0
@@ -95,8 +134,22 @@ define-class Profile
             strings = (move (&self 'strings))
             (&self 'strings) = (object)
 
+            length = (len (&self 'strings))
+            update = (length / (&view 'width))
+            ln     = 0
+
             foreach s strings
                 (&self 'strings) <- ((strings s) : (move s))
+
+                if (((++ ln) % update) == 0)
+                    &view @ ('loading-bar-update ((float ln) / length))
+
+            length = (len (&self 'intervals))
+            update = (length / (&view 'width))
+            ln     = 0
+
+            foreach &interval (&self 'intervals)
+                &interval @ ('accum)
 
                 if (((++ ln) % update) == 0)
                     &view @ ('loading-bar-update ((float ln) / length))

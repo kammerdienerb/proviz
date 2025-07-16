@@ -44,13 +44,14 @@ define-class Line-Graph
 
             largest-count = 0
             foreach &interval (&profile 'intervals)
-                if (&event in (&interval 'event-count-by-type))
-                    largest-count = (max largest-count ((&interval 'event-count-by-type) &event))
+                if (&event in (&interval 'event-accum-by-type))
+                    largest-count = (max largest-count ((&interval 'event-accum-by-type) &event))
 
             foreach &interval (&profile 'intervals)
-                count = (select (&event in (&interval 'event-count-by-type)) ((&interval 'event-count-by-type) &event) 0)
+                count = (select (&event in (&interval 'event-accum-by-type)) ((&interval 'event-accum-by-type) &event) 0)
                 value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
-                append (graph 'points) (count : value)
+                append (graph 'points)
+                    object ('count : count) ('value : value)
 
             (graph 'color) |= (156 + ((rand) % 100))
             (graph 'color) |= ((156 + ((rand) % 100)) << 8)
@@ -109,8 +110,8 @@ define-class Line-Graph
                     if (idx < ((len (&self 'points)) - 1))
                         &next-point = ((&self 'points) (idx + 1))
 
-                    value      = (&point 1)
-                    next-value = (select (is-bound &next-point) (&next-point 1) nil)
+                    value      = (&point 'value)
+                    next-value = (select (is-bound &next-point) (&next-point 'value) nil)
 
                     r = (bottom - (sint (value * ((&self 'height) - 1))))
                     glyph = (&self @ ('get-braille-glyph value next-value))
@@ -220,7 +221,7 @@ define-class Line-Graph
                             (&self 'anchor-idx) = idx
                             &self @ ('set-col-color &view idx)
                             (&self 'state) = 'anchor-hover
-                            &view @ ('status-text (fmt "Samples: %" (((&self 'points) idx) 0)))
+                            &view @ ('status-text (fmt "Value: %" (((&self 'points) idx) 'count)))
 
                             response = 'range-hover
 
@@ -228,7 +229,7 @@ define-class Line-Graph
                             (&self 'anchor-idx) = idx
                             &self @ ('set-col-color &view idx)
                             (&self 'state) = 'anchor-hover
-                            &view @ ('status-text (fmt "Samples: %" (((&self 'points) idx) 0)))
+                            &view @ ('status-text (fmt "Value: %" (((&self 'points) idx) 'count)))
 
                             response = 'range-hover
 
@@ -236,7 +237,7 @@ define-class Line-Graph
                             &self @ ('reset-col-color &view (&self 'anchor-idx))
                             &self @ ('set-col-color &view idx)
                             (&self 'anchor-idx) = idx
-                            &view @ ('status-text (fmt "Samples: %" (((&self 'points) idx) 0)))
+                            &view @ ('status-text (fmt "Value: %" (((&self 'points) idx) 'count)))
 
                             response = 'range-hover
 
@@ -260,14 +261,17 @@ define-class Line-Graph
                             range  = (&self @ ('get-selected-range))
                             start  = (range 0)
                             length = (range 1)
-                            count  = 0
+
+                            accum-points = (list)
 
                             repeat i length
                                 i += start
-                                count += (((&self 'points) i) 0)
                                 &self @ ('set-col-color &view i)
+                                append accum-points ((&self 'points) i)
 
-                            &view @ ('status-text (fmt "Samples: % | Seconds: %" count (length * (options 'interval-time))))
+                            accum = (accum-samples (&self 'event) accum-points)
+
+                            &view @ ('status-text (fmt "Value: % | Seconds: %" accum (length * (options 'interval-time))))
 
                             response = 'range-hover
 

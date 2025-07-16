@@ -46,15 +46,15 @@ define-class SSO-Heatmap
 
             largest-count = 0
             foreach &interval (&profile 'intervals)
-                if (&event in (&interval 'event-count-by-type))
-                    largest-count = (max largest-count ((&interval 'event-count-by-type) &event))
+                if (&event in (&interval 'event-accum-by-type))
+                    largest-count = (max largest-count ((&interval 'event-accum-by-type) &event))
 
             &grid-height = (map 'grid-height)
 
             row = (&start-row + &grid-height)
             col = 1
             foreach &interval (&profile 'intervals)
-                count = (select (&event in (&interval 'event-count-by-type)) ((&interval 'event-count-by-type) &event) 0)
+                count = (select (&event in (&interval 'event-accum-by-type)) ((&interval 'event-accum-by-type) &event) 0)
                 value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
                 color =
                     0xff0000 |
@@ -186,7 +186,7 @@ define-class SSO-Heatmap
                             (&self 'anchor-idx) = idx
                             &self @ ('set-blip-color-mask &view idx)
                             (&self 'state) = 'anchor-hover
-                            &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
+                            &view @ ('status-text (fmt "Value: %" (((&self 'blips) idx) 'count)))
 
                             response = 'range-hover
 
@@ -194,7 +194,7 @@ define-class SSO-Heatmap
                             (&self 'anchor-idx) = idx
                             &self @ ('set-blip-color-mask &view idx)
                             (&self 'state) = 'anchor-hover
-                            &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
+                            &view @ ('status-text (fmt "Value: %" (((&self 'blips) idx) 'count)))
 
                             response = 'range-hover
 
@@ -202,7 +202,7 @@ define-class SSO-Heatmap
                             &self @ ('reset-blip-color &view (&self 'anchor-idx))
                             &self @ ('set-blip-color-mask &view idx)
                             (&self 'anchor-idx) = idx
-                            &view @ ('status-text (fmt "Samples: %" (((&self 'blips) idx) 'count)))
+                            &view @ ('status-text (fmt "Value: %" (((&self 'blips) idx) 'count)))
 
                             response = 'range-hover
 
@@ -226,14 +226,16 @@ define-class SSO-Heatmap
                             range  = (&self @ ('get-selected-range))
                             start  = (range 0)
                             length = (range 1)
-                            count  = 0
 
+                            accum-blips = (list)
                             repeat i length
                                 i += start
-                                count += (((&self 'blips) i) 'count)
                                 &self @ ('set-blip-color-mask &view i)
+                                append accum-blips ((&self 'blips) i)
 
-                            &view @ ('status-text (fmt "Samples: % | Seconds: %" count (length * (options 'interval-time))))
+                            accum = (accum-samples (&self 'event) accum-blips)
+
+                            &view @ ('status-text (fmt "Value: % | Seconds: %" accum (length * (options 'interval-time))))
 
                             response = 'range-hover
 

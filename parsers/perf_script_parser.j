@@ -25,7 +25,7 @@ parse-perf-script =
                 if ((not (startswith &line "\t")) and (not (startswith &line "#")))
                     split-line = (split &line " ")
                     line-len = (len split-line)
-                    
+
                     # Find the first field that ends with a colon. This is the time.
                     time-field = 0
                     event-field = 0
@@ -37,41 +37,41 @@ parse-perf-script =
                                 time = (parse-float (colon-match 1))
                             elif (event-field == 0)
                                 event-field = i
-                                event = (colon-match 1)
+                                event = (fmt "perf:%" (colon-match 1))
                     if (time-field == 0)
                         wlog (fmt "Failed to parse time from: %" &line)
                     if (event-field == 0)
                         wlog (fmt "Failed to parse event from: %" &line)
-                    
+
                     # Potentially get count from the second-to-last field
                     if (event-field == (time-field + 1))
                         count = 1
                     else
                         count = (parse-int (move (split-line (time-field + 1))))
-                      
+
                     # If the bracketed number is present, the PID is one field earlier
                     pid-field = (time-field - 1)
                     if (startswith ((split-line pid-field)) "[")
                         -- pid-field
-                        
+
                     pid-match = ((split-line pid-field) =~ pid-regex)
                     if (pid-match != nil)
                         # We got a PID and TID
                         pid = (parse-int (pid-match 1))
                     else
                         pid = (parse-int (move (split-line pid-field)))
-                        
+
                     cmd-name = ""
                     repeat i pid-field
                         if (cmd-name == "")
                             cmd-name = (move (split-line i))
                         else
                             cmd-name = (fmt "% %" cmd-name (move (split-line i)))
-                            
+
                     stack = ""
                     leaf = "[unknown]"
                 elif (not (startswith &line "#"))
-                        
+
                     matches = (&line =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
 
                     sym = (move (matches 2))

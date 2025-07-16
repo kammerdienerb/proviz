@@ -14,10 +14,10 @@
 
 #include "util/util.j.h"
 #include "parsers.j.h"
-#include "parsers/iaprof_parser.j.h"
-#include "parsers/perf_script_parser.j.h"
 #include "options.j.h"
 #include "profile.j.h"
+#include "parsers/iaprof_parser.j.h"
+#include "parsers/perf_script_parser.j.h"
 #include "widgets/line_graph.j.h"
 #include "widgets/sso_heatmap.j.h"
 #include "widgets/flamegraph.j.h"
@@ -288,10 +288,10 @@ int main(int argc, char **argv) {
 
     LOAD_J(util, util);
     LOAD_J(parsers);
-    LOAD_J(iaprof_parser, parsers);
-    LOAD_J(perf_script_parser, parsers);
     LOAD_J(options);
     LOAD_J(profile);
+    LOAD_J(iaprof_parser, parsers);
+    LOAD_J(perf_script_parser, parsers);
     LOAD_J(view);
     LOAD_J(line_graph, widgets);
     LOAD_J(sso_heatmap, widgets);
