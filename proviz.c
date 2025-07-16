@@ -1346,10 +1346,9 @@ static void tty_pop(unsigned long long n_bytes) {
 }
 
 static void tty_printf(const char *fmt, ...) {
-    int   n_bytes;
-    char *buff;
-    
-    va_list args;
+    va_list  args;
+    int      n_bytes;
+    char    *buff;
 
     va_start(args, fmt);
     n_bytes = vsnprintf(NULL, 0, fmt, args);
@@ -1360,9 +1359,8 @@ static void tty_printf(const char *fmt, ...) {
     va_start(args, fmt);
     vsnprintf(buff, n_bytes + 1, fmt, args);
     va_end(args);
-    
-    tty_pop(1);
 
+    tty_pop(1);
 }
 
 static void tty_flush(void) {

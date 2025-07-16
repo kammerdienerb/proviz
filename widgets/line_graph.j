@@ -221,7 +221,7 @@ define-class Line-Graph
                             (&self 'anchor-idx) = idx
                             &self @ ('set-col-color &view idx)
                             (&self 'state) = 'anchor-hover
-                            &view @ ('status-text (fmt "Value: %" (((&self 'points) idx) 'count)))
+                            &view @ ('status-text (fmt "%: %" (&self 'event) (((&self 'points) idx) 'count)))
 
                             response = 'range-hover
 
@@ -229,7 +229,7 @@ define-class Line-Graph
                             (&self 'anchor-idx) = idx
                             &self @ ('set-col-color &view idx)
                             (&self 'state) = 'anchor-hover
-                            &view @ ('status-text (fmt "Value: %" (((&self 'points) idx) 'count)))
+                            &view @ ('status-text (fmt "%: %" (&self 'event) (((&self 'points) idx) 'count)))
 
                             response = 'range-hover
 
@@ -237,7 +237,7 @@ define-class Line-Graph
                             &self @ ('reset-col-color &view (&self 'anchor-idx))
                             &self @ ('set-col-color &view idx)
                             (&self 'anchor-idx) = idx
-                            &view @ ('status-text (fmt "Value: %" (((&self 'points) idx) 'count)))
+                            &view @ ('status-text (fmt "%: %" (&self 'event) (((&self 'points) idx) 'count)))
 
                             response = 'range-hover
 
@@ -271,7 +271,7 @@ define-class Line-Graph
 
                             accum = (accum-samples (&self 'event) accum-points)
 
-                            &view @ ('status-text (fmt "Value: % | Seconds: %" accum (length * (options 'interval-time))))
+                            &view @ ('status-text (fmt "%: % | Seconds: %" (&self 'event) accum (length * (options 'interval-time))))
 
                             response = 'range-hover
 
