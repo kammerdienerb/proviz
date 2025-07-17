@@ -94,7 +94,7 @@ define-class Profile
             foreach &sample (&self 'samples)
                 if (&def-evt == nil)
                     &def-evt = (&sample 'type)
-                (get-or-insert (&self 'event-count-by-type) (&sample 'type) 0) += (&sample 'count)
+                ++ (get-or-insert (&self 'event-count-by-type) (&sample 'type) 0)
 
                 time = (&sample 'time)
 

@@ -36,6 +36,9 @@ profile := nil
         &current-view @ ('loading-bar-fini)
 
         match (options 'COMMAND)
+            "report"
+                (report-command profile)
+
             "flamescope"
                 (flamescope-command profile)
 

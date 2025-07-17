@@ -18,10 +18,12 @@
 #include "profile.j.h"
 #include "parsers/iaprof_parser.j.h"
 #include "parsers/perf_script_parser.j.h"
+#include "widgets/report_menu.j.h"
 #include "widgets/line_graph.j.h"
 #include "widgets/sso_heatmap.j.h"
 #include "widgets/flamegraph.j.h"
 #include "widgets/thief_scope.j.h"
+#include "commands/report.j.h"
 #include "commands/plot.j.h"
 #include "commands/flamegraph.j.h"
 #include "commands/flamescope.j.h"
@@ -293,10 +295,12 @@ int main(int argc, char **argv) {
     LOAD_J(iaprof_parser, parsers);
     LOAD_J(perf_script_parser, parsers);
     LOAD_J(view);
+    LOAD_J(report_menu, widgets);
     LOAD_J(line_graph, widgets);
     LOAD_J(sso_heatmap, widgets);
     LOAD_J(flamegraph, widgets);
     LOAD_J(thief_scope, widgets);
+    LOAD_J(report, commands);
     LOAD_J(plot, commands);
     LOAD_J(flamegraph, commands);
     LOAD_J(flamescope, commands);

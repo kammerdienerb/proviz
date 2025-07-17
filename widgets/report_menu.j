@@ -1,0 +1,109 @@
+define-class Report-Menu
+    'height       : 0
+    'width        : 0
+    'events       : (list)
+    'event-width  : 0
+    'count-width  : 0
+    'start-row    : 0
+    'num-rows     : 0
+    'selected-idx : nil
+
+    'new :
+        fn ()
+            menu = (new-instance Report-Menu)
+
+            max-event-width = 0
+            max-count-width = 0
+
+            (menu 'events) = (sorted (keys (&report-profile 'event-count-by-type)))
+
+            foreach event (menu 'events)
+                event-width = (len (chars event))
+                count-width = (len (chars (string ((&report-profile 'event-count-by-type) event))))
+
+                max-event-width = (max max-event-width event-width)
+                max-count-width = (max max-count-width count-width)
+
+                ++ (menu 'num-rows)
+
+            (menu 'width)       = ((max-event-width + max-count-width) + 12)
+            (menu 'event-width) = max-event-width
+            (menu 'count-width) = max-count-width
+
+            move menu
+
+    'paint :
+        fn (&self &view &vert-offset &horiz-offset)
+            (&self 'height) = ((&view 'height) - 1)
+
+            row = 2
+            foreach event (&report-profile 'event-count-by-type)
+                text =
+                    fmt " % % samples"
+                        spad (0 - (&self 'event-width)) event
+                        spad (&self 'count-width) (string ((&report-profile 'event-count-by-type) event))
+
+                col = 1
+                foreach char (chars text)
+                    if ((&self 'selected-idx) == (row - 2))
+                        @term:set-cell-bg   row col 0xffffff
+                        @term:set-cell-fg   row col 0x000000
+                    else
+                        @term:unset-cell-bg row col
+                        @term:set-cell-fg   row col 0xffffff
+
+                    @term:set-cell-char row col char
+                    ++ col
+
+                if ((&self 'selected-idx) == (row - 2))
+                    @term:set-cell-bg   row col 0xffffff
+                    @term:set-cell-fg   row col 0x000000
+                else
+                    @term:unset-cell-bg row col
+                    @term:set-cell-fg   row col 0xffffff
+
+                ++ row
+
+            col = (&self 'width)
+            repeat row (&self 'height)
+                row += 2
+                @term:set-cell-fg   row col 0xffffff
+                @term:set-cell-char row col "│"
+
+
+    'mouse-over :
+        fn (&self &view &row &col)
+            response = nil
+            if
+                and
+                    &row > 1
+                    &row < ((&self 'num-rows) + 2)
+                    &col < (&self 'width)
+
+                (&self 'selected-idx) = (&row - 2)
+                &self @ ('paint &view 0 0)
+                @term:flush
+
+            else
+                had-selection = ((&self 'selected-idx) != nil)
+                (&self 'selected-idx) = nil
+                if had-selection
+                    &self @ ('paint &view 0 0)
+                    @term:flush
+
+            response
+
+    'mouse-click :
+        fn (&self &view &row &col)
+            response = nil
+
+            if
+                and
+                    &row > 1
+                    &row < ((&self 'num-rows) + 2)
+                    &col < (&self 'width)
+
+                (&self 'selected-idx) = (&row - 2)
+                response = 'report-add-widget
+
+            response

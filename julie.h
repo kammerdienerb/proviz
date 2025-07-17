@@ -8819,6 +8819,51 @@ out:;
     return status;
 }
 
+static Julie_Status julie_builtin_spad(Julie_Interp *interp, Julie_Value *tree, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *w;
+    Julie_Value  *val;
+    int           width;
+    int           ljust;
+    char         *s;
+    int           len;
+    int           padding;
+    char         *padded;
+
+    status = julie_args(interp, tree, "i*", n_values, values, &w, &val);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out;
+    }
+
+    width = w->type == JULIE_SINT ? w->sint : w->uint;
+    ljust = width < 0;
+    s     = julie_to_string(interp, val, JULIE_NO_QUOTE);
+    len   = strlen(s);
+
+    if (ljust) { width = -width; }
+
+    padding = width > len
+                ? width - len
+                : 0;
+
+    padded = malloc(len + padding + 1);
+    memset(padded, ' ', len + padding);
+    memcpy(padded + ((!ljust) * padding), s, len);
+    padded[len + padding] = 0;
+
+    *result = julie_string_value(interp, padded);
+
+    free(padded);
+    free(s);
+
+    julie_free_value(interp, w);
+    julie_free_value(interp, val);
+
+out:;
+    return status;
+}
+
 static Julie_Status julie_builtin_printf(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status        status;
     Julie_Value        *fmt;
@@ -10971,6 +11016,7 @@ Julie_Interp *julie_init_interp(void) {
     JULIE_BIND_FN(      "print",                 julie_builtin_print);
     JULIE_BIND_FN(      "println",               julie_builtin_println);
     JULIE_BIND_FN(      "fmt",                   julie_builtin_fmt);
+    JULIE_BIND_FN(      "spad",                  julie_builtin_spad);
     JULIE_BIND_FN(      "num-fmt",               julie_builtin_num_fmt);
     JULIE_BIND_FN(      "printf",                julie_builtin_printf);
     JULIE_BIND_FN(      "parse-int",             julie_builtin_parse_int);

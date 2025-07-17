@@ -143,7 +143,7 @@ define-class FlameScope-View-Input-Handler
 
                     foreach widget-name (&view 'widgets)
                         &widget = ((&view 'widgets) widget-name)
-                        if ((widget-name != range-hover-widget-name) and ((&widget '__class__) == (' SSO-Heatmap)))
+                        if ((widget-name != range-hover-widget-name) and ('set-mirror-range in ((&widget '__class__))))
                             &widget @ ('set-mirror-range &view range)
                             did-paint-other-range = 1
                         unref &widget

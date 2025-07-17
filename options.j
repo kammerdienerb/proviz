@@ -13,6 +13,7 @@ options-def :=
 
 list-cmds :=
     list
+        "report"
         "plot"
         "flamegraph"
         "flamescope"

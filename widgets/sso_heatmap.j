@@ -70,6 +70,7 @@ define-class SSO-Heatmap
                 else
                     -- row
 
+            unref &grid-height
             move map
 
     'paint :
