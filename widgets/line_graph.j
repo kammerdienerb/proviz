@@ -1,13 +1,14 @@
 define-class Line-Graph
-    'height      : 0
-    'start-row   : 0
-    'state       : 'no-selection
-    'anchor-idx  : nil
-    'tail-idx    : nil
-    'event       : ""
-    'points      : (list)
-    'color       : 0
-    'glyphs      :
+    'height       : 0
+    'start-row    : 0
+    'label-offset : 0
+    'state        : 'no-selection
+    'anchor-idx   : nil
+    'tail-idx     : nil
+    'event        : ""
+    'points       : (list)
+    'color        : 0
+    'glyphs       :
         object
             -1             : "⡀"
             -2             : "⠄"
@@ -35,12 +36,13 @@ define-class Line-Graph
             (3 | (3 << 2)) : "⠉"
 
     'new :
-        fn (&profile &event &start-row)
+        fn (&profile &event &start-row &label-offset)
             graph = (new-instance Line-Graph)
 
-            (graph 'height)    = 6
-            (graph 'start-row) = &start-row
-            (graph 'event)     = &event
+            (graph 'height)       = 6
+            (graph 'start-row)    = &start-row
+            (graph 'label-offset) = &label-offset
+            (graph 'event)        = &event
 
             largest-count = 0
             foreach &interval (&profile 'intervals)
@@ -90,7 +92,7 @@ define-class Line-Graph
         fn (&self &view &vert-offset &horiz-offset)
             start-row = ((&self 'start-row) + &vert-offset)
 
-            c = 1
+            c = (1 + (&self 'label-offset))
             foreach char (chars (&self 'event))
                 @term:set-cell-fg   start-row c (&self 'color)
                 @term:set-cell-char start-row c char
@@ -99,7 +101,7 @@ define-class Line-Graph
 
             offset = (max 0 (0 - &horiz-offset))
 
-            bottom = (start-row + (&self 'height))
+            bottom = (start-row + ((&self 'height) - 1))
 
             c = 1
             repeat idx (&view 'width)
@@ -110,10 +112,14 @@ define-class Line-Graph
                     if (idx < ((len (&self 'points)) - 1))
                         &next-point = ((&self 'points) (idx + 1))
 
-                    value      = (&point 'value)
-                    next-value = (select (is-bound &next-point) (&next-point 'value) nil)
+                    value      = (min (&point 'value) 0.999)
+                    next-value = (select (is-bound &next-point) (min (&next-point 'value) 0.999) nil)
 
-                    r = (bottom - (sint (value * ((&self 'height) - 1))))
+                    r =
+                        select (value == 1.0)
+                            (start-row + 1)
+                            (bottom - (sint (value * ((&self 'height) - 1))))
+
                     glyph = (&self @ ('get-braille-glyph value next-value))
 
                     @term:set-cell-char r c glyph
@@ -128,14 +134,14 @@ define-class Line-Graph
     'set-col-color :
         fn (&self &view &idx)
             c = ((&idx + 1) + (&view 'horiz-offset))
-            repeat r (&self 'height)
+            repeat r ((&self 'height) - 1)
                 r += ((&view 'vert-offset) + ((&self 'start-row) + 1))
                 @term:set-cell-bg r c 0x007f7f
 
     'reset-col-color :
         fn (&self &view &idx)
             c = ((&idx + 1) + (&view 'horiz-offset))
-            repeat r (&self 'height)
+            repeat r ((&self 'height) - 1)
                 r += ((&view 'vert-offset) + ((&self 'start-row) + 1))
                 @term:unset-cell-bg r c
 

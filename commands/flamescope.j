@@ -33,8 +33,6 @@ define-class FlameScope-Sub-FlameGraph-View-Input-Handler
                     if ('last-right-button-row in &view)
                         (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
                         (&view 'vert-offset) = (max (&view 'vert-offset) 0)
-#                     if ('last-right-button-col in &view)
-#                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
 
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
@@ -58,19 +56,21 @@ define-class FlameScope-View-Input-Handler
                 "q"
                     @term:exit
                 "up"
-                    ++ (&view 'vert-offset)
+                    (&view 'vert-offset) += (&view 'height)
+                    (&view 'vert-offset) = (min (&view 'vert-offset) 0)
                     &view @ ('clear)
                     &view @ ('paint)
                 "down"
-                    -- (&view 'vert-offset)
+                    (&view 'vert-offset) -= (&view 'height)
                     &view @ ('clear)
                     &view @ ('paint)
                 "right"
-                    -- (&view 'horiz-offset)
+                    (&view 'horiz-offset) -= (&view 'width)
                     &view @ ('clear)
                     &view @ ('paint)
                 "left"
-                    ++ (&view 'horiz-offset)
+                    (&view 'horiz-offset) += (&view 'width)
+                    (&view 'horiz-offset) = (min (&view 'horiz-offset) 0)
                     &view @ ('clear)
                     &view @ ('paint)
 
@@ -86,6 +86,7 @@ define-class FlameScope-View-Input-Handler
                 elif (&action == 'drag)
                     if ('last-right-button-row in &view)
                         (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+                        (&view 'vert-offset) = (min (&view 'vert-offset) 0)
                     if ('last-right-button-col in &view)
                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
                         (&view 'horiz-offset) = (min (&view 'horiz-offset) 0)

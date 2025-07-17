@@ -29,6 +29,7 @@ define-class View
             @term:clear-row 1
             col = 1
             foreach char (chars &text)
+                @term:set-cell-fg   1 col 0x00ffff
                 @term:set-cell-char 1 col char
                 ++ col
 

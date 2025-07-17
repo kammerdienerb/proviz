@@ -35,8 +35,6 @@ define-class Report-Sub-FlameGraph-View-Input-Handler
                     if ('last-right-button-row in &view)
                         (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
                         (&view 'vert-offset) = (max (&view 'vert-offset) 0)
-#                     if ('last-right-button-col in &view)
-#                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
 
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
@@ -63,22 +61,19 @@ define-class Report-View-Input-Handler
                 "q"
                     @term:exit
                 "up"
-#                     ++ (&view 'vert-offset)
-                    (&view 'vert-offset) += (&menu 'height)
+                    (&view 'vert-offset) += (&view 'height)
+                    (&view 'vert-offset) = (min (&view 'vert-offset) 0)
                     &view @ ('clear)
                     &view @ ('paint)
                 "down"
-#                     -- (&view 'vert-offset)
-                    (&view 'vert-offset) -= (&menu 'height)
+                    (&view 'vert-offset) -= (&view 'height)
                     &view @ ('clear)
                     &view @ ('paint)
                 "right"
-#                     -- (&view 'horiz-offset)
                     (&view 'horiz-offset) -= ((&view 'width) - (&menu 'width))
                     &view @ ('clear)
                     &view @ ('paint)
                 "left"
-#                     ++ (&view 'horiz-offset)
                     (&view 'horiz-offset) += ((&view 'width) - (&menu 'width))
                     (&view 'horiz-offset) = (min (&view 'horiz-offset) (&menu 'width))
                     &view @ ('clear)
@@ -107,6 +102,7 @@ define-class Report-View-Input-Handler
                 elif (&action == 'drag)
                     if ('last-right-button-row in &view)
                         (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+                        (&view 'vert-offset) = (min (&view 'vert-offset) 0)
                     if ('last-right-button-col in &view)
                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
                         (&view 'horiz-offset) = (min (&view 'horiz-offset) 0)
@@ -130,9 +126,14 @@ define-class Report-View-Input-Handler
                     match response
                         'report-add-widget
                             event = ((&menu 'events) (&menu 'selected-idx))
+
                             new-widget =
                                 (SSO-Heatmap 'new) &report-profile event (2 + report-widget-offset) (&menu 'width)
-                            report-widget-offset += (new-widget 'height)
+#                             new-widget =
+#                                 (Line-Graph 'new) &report-profile event (2 + report-widget-offset) (&menu 'width)
+
+                            report-widget-offset += ((new-widget 'height) + 1)
+
                             &view @
                                 'add-widget (fmt "flamescope/%" event)
                                     new-widget
