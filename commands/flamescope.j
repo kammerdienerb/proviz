@@ -160,5 +160,5 @@ flamescope-command =
             name = (fmt "heatmap/%" event)
             &current-view @
                 'add-widget name
-                    (SSO-Heatmap 'new) &profile event offset
+                    (SSO-Heatmap 'new) &profile event offset 0
             offset = ((offset + (((&current-view 'widgets) name) 'height)) + 1)

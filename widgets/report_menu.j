@@ -1,6 +1,7 @@
 define-class Report-Menu
     'height       : 0
     'width        : 0
+    'layer        : 1
     'events       : (list)
     'event-width  : 0
     'count-width  : 0
@@ -36,8 +37,16 @@ define-class Report-Menu
         fn (&self &view &vert-offset &horiz-offset)
             (&self 'height) = ((&view 'height) - 1)
 
+            repeat row (&self 'height)
+                row += 2
+                repeat col (&self 'width)
+                    col += 1
+                    @term:unset-cell-bg row col
+                    @term:set-cell-fg   row col 0xffffff
+                    @term:set-cell-char row col " "
+
             row = 2
-            foreach event (&report-profile 'event-count-by-type)
+            foreach event (&self 'events)
                 text =
                     fmt " % % samples"
                         spad (0 - (&self 'event-width)) event

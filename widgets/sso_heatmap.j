@@ -23,22 +23,23 @@ define-class SSO-Heatmap-Blip
                 (&self 'color)
 
 define-class SSO-Heatmap
-    'height      : 0
-    'start-row   : 0
-
-    'grid-height : 0
-    'blips       : (list)
-    'state       : 'no-selection
-    'anchor-idx  : nil
-    'tail-idx    : nil
-    'vert-offset : 0
+    'height       : 0
+    'start-row    : 0
+    'label-offset : 0
+    'grid-height  : 0
+    'blips        : (list)
+    'state        : 'no-selection
+    'anchor-idx   : nil
+    'tail-idx     : nil
+    'vert-offset  : 0
     'horiz-offset : 0
-    'event       : ""
+    'event        : ""
 
     'new :
-        fn (&profile &event &start-row)
+        fn (&profile &event &start-row &label-offset)
             map = (new-instance SSO-Heatmap)
 
+            (map 'label-offset) = &label-offset
             (map 'grid-height) = (sint (1.0 / (options 'interval-time)))
             (map 'height) = ((map 'grid-height) + 1)
             (map 'start-row) = &start-row
@@ -78,7 +79,7 @@ define-class SSO-Heatmap
             (&self 'vert-offset) = &vert-offset
             (&self 'horiz-offset) = &horiz-offset
             row = ((&self 'start-row) + &vert-offset)
-            col = 1
+            col = (1 + (&self 'label-offset))
             foreach char (chars (&self 'event))
                 @term:set-cell-fg   row col 0xffffff
                 @term:set-cell-char row col char

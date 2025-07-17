@@ -1,28 +1,102 @@
-define-class Report-View-Input-Handler
+report-widget-offset := 0
+
+define-class Report-Sub-FlameGraph-View-Input-Handler
     'on-key :
         fn (&self &view &key)
             match &key
                 "q"
-                    @term:exit
+                    set-view "main"
+                "esc"
+                    foreach widget-name (&view 'widgets)
+                        &widget = ((&view 'widgets) widget-name)
+                        if ((&widget '__class__) == (' Flame-Graph))
+                            &widget @ ('reset-zoom &view)
+                        unref &widget
                 "up"
                     ++ (&view 'vert-offset)
                     &view @ ('clear)
                     &view @ ('paint)
                 "down"
-                    -- (&view 'vert-offset)
+                    if ((&view 'vert-offset) > 0)
+                        -- (&view 'vert-offset)
+                        &view @ ('clear)
+                        &view @ ('paint)
+
+    'on-mouse :
+        fn (&self &view &type &action &button &row &col)
+            if (&button == 'right)
+                if (&action == 'down)
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+                elif (&action == 'up)
+                    &view -> 'last-right-button-row
+                    &view -> 'last-right-button-col
+                elif (&action == 'drag)
+                    if ('last-right-button-row in &view)
+                        (&view 'vert-offset) += (&row - (&view 'last-right-button-row))
+                        (&view 'vert-offset) = (max (&view 'vert-offset) 0)
+#                     if ('last-right-button-col in &view)
+#                         (&view 'horiz-offset) += (&col - (&view 'last-right-button-col))
+
+                    &view <- ('last-right-button-row : &row)
+                    &view <- ('last-right-button-col : &col)
+
+                    &view @ ('clear)
+                    &view @ ('paint)
+            else
+                foreach widget-name (&view 'widgets)
+                    &widget = ((&view 'widgets) widget-name)
+                    response = nil
+                    if ((&action == 'down) and (&button == 'left))
+                        response = (&widget @ ('mouse-click &view &row &col))
+                    elif (&action == 'over)
+                        response = (&widget @ ('mouse-over &view &row &col))
+                    unref &widget
+
+
+define-class Report-View-Input-Handler
+    'on-key :
+        fn (&self &view &key)
+            &menu = ((&view 'widgets) "menu")
+
+            match &key
+                "q"
+                    @term:exit
+                "up"
+#                     ++ (&view 'vert-offset)
+                    (&view 'vert-offset) += (&menu 'height)
+                    &view @ ('clear)
+                    &view @ ('paint)
+                "down"
+#                     -- (&view 'vert-offset)
+                    (&view 'vert-offset) -= (&menu 'height)
                     &view @ ('clear)
                     &view @ ('paint)
                 "right"
-                    -- (&view 'horiz-offset)
+#                     -- (&view 'horiz-offset)
+                    (&view 'horiz-offset) -= ((&view 'width) - (&menu 'width))
                     &view @ ('clear)
                     &view @ ('paint)
                 "left"
-                    ++ (&view 'horiz-offset)
+#                     ++ (&view 'horiz-offset)
+                    (&view 'horiz-offset) += ((&view 'width) - (&menu 'width))
+                    (&view 'horiz-offset) = (min (&view 'horiz-offset) (&menu 'width))
                     &view @ ('clear)
                     &view @ ('paint)
 
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
+            &menu = ((&view 'widgets) "menu")
+
+            in-menu =
+                fn (&menu &row &col)
+                    and
+                        &row > 1
+                        &row <= (&menu 'height)
+                        &col <= (&menu 'width)
+
+            changed-view = 0
+
             if (&button == 'right)
                 if (&action == 'down)
                     &view <- ('last-right-button-row : &row)
@@ -44,29 +118,81 @@ define-class Report-View-Input-Handler
                     &view @ ('paint)
 
             else
-                menu-response = nil
+                if (in-menu &menu &row &col)
+                    &view @ ('status-text "")
 
-                foreach widget-name (&view 'widgets)
-                    &widget = ((&view 'widgets) widget-name)
                     response = nil
                     if ((&action == 'down) and (&button == 'left))
-                        response = (&widget @ ('mouse-click &view &row &col))
+                        response = (&menu @ ('mouse-click &view &row &col))
                     elif (&action == 'over)
-                        response = (&widget @ ('mouse-over &view &row &col))
+                        response = (&menu @ ('mouse-over &view &row &col))
 
-                    if (widget-name == "menu")
-                        menu-response = response
+                    match response
+                        'report-add-widget
+                            event = ((&menu 'events) (&menu 'selected-idx))
+                            new-widget =
+                                (SSO-Heatmap 'new) &report-profile event (2 + report-widget-offset) (&menu 'width)
+                            report-widget-offset += (new-widget 'height)
+                            &view @
+                                'add-widget (fmt "flamescope/%" event)
+                                    new-widget
+                            &view @ ('paint)
 
-                    unref &widget
+                else
+                    range-hover-widget-name = nil
 
-                match menu-response
-                    'report-add-widget
-                        &menu = ((&view 'widgets) "menu")
-                        event = ((&menu 'events) (&menu 'selected-idx))
-                        &view @
-                            'add-widget (fmt "flamescope/%" event)
-                                (SSO-Heatmap 'new) &report-profile event 1
-                        &view @ ('paint)
+                    foreach widget-name (&view 'widgets)
+                        &widget = ((&view 'widgets) widget-name)
+                        response = nil
+                        if ((&action == 'down) and (&button == 'left))
+                            response = (&widget @ ('mouse-click &view &row &col))
+                        elif (&action == 'over)
+                            response = (&widget @ ('mouse-over &view &row &col))
+
+                        match response
+                            'range-hover
+                                if (range-hover-widget-name == nil)
+                                    range-hover-widget-name = widget-name
+
+                            'range-selected
+                                range = (&widget @ ('get-selected-range))
+
+                                foreach selection-widget-name (&view 'widgets)
+                                    &selection-widget = ((&view 'widgets) selection-widget-name)
+                                    if ('reset-selection in ((&selection-widget '__class__)))
+                                        &selection-widget @ ('reset-selection &view)
+                                    unref &selection-widget
+
+                                views <-
+                                    "flamegraph" :
+                                        (View 'new) rows cols
+                                            'name          : "Flame Graph"
+                                            'input-handler : (new-instance Report-Sub-FlameGraph-View-Input-Handler)
+
+                                set-view "flamegraph"
+
+                                changed-view = 1
+
+                                &current-view @
+                                    'add-widget "flamegraph"
+                                        (Flame-Graph 'new) &report-profile (&widget 'event) (range 0) (range 1) 2
+
+                                &current-view @ ('paint)
+
+                        unref &widget
+
+                    if (range-hover-widget-name != nil)
+                        range = (((&view 'widgets) range-hover-widget-name) @ ('get-selected-range))
+
+                        foreach widget-name (&view 'widgets)
+                            &widget = ((&view 'widgets) widget-name)
+                            if ((widget-name != range-hover-widget-name) and ('set-mirror-range in ((&widget '__class__))))
+                                &widget @ ('set-mirror-range &view range)
+                            unref &widget
+
+            if (not changed-view)
+                &menu @ ('paint &view 0 0)
+                @term:flush
 
 report-command =
     fn (&profile)
@@ -76,4 +202,4 @@ report-command =
         &current-view @ ('set-input-handler (new-instance Report-View-Input-Handler))
         &current-view @ ('add-widget "menu" ((Report-Menu 'new)))
 
-        (&current-view 'horiz-offset) = ((((&current-view 'widgets) "menu") 'width) + 1)
+        (&current-view 'horiz-offset) = (((&current-view 'widgets) "menu") 'width)

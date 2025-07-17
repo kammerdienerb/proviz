@@ -34,7 +34,19 @@ define-class View
 
     'paint :
         fn (&self)
+            by-layer = (list)
+
             foreach widget-name (&self 'widgets)
+                append by-layer
+                    widget-name :
+                        get-or-insert ((&self 'widgets) widget-name) 'layer 0
+
+            by-layer =
+                sorted (move by-layer)
+                    fn (a b) ((a 1) < (b 1))
+
+            foreach &pair by-layer
+                widget-name = (&pair 0)
                 ((&self 'widgets) widget-name) @ ('paint &self (&self 'vert-offset) (&self 'horiz-offset))
             @term:flush
 
