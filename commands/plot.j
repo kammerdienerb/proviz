@@ -12,12 +12,10 @@ define-class LineGraph-Sub-FlameGraph-View-Input-Handler
                         unref &widget
                 "up"
                     ++ (&view 'vert-offset)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "down"
                     if ((&view 'vert-offset) > 0)
                         -- (&view 'vert-offset)
-                        &view @ ('clear)
                         &view @ ('paint)
 
     'on-mouse :
@@ -37,7 +35,6 @@ define-class LineGraph-Sub-FlameGraph-View-Input-Handler
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
 
-                    &view @ ('clear)
                     &view @ ('paint)
             else
                 foreach widget-name (&view 'widgets)
@@ -58,20 +55,16 @@ define-class Plot-View-Input-Handler
                 "up"
                     (&view 'vert-offset) += (&view 'height)
                     (&view 'vert-offset) = (min (&view 'vert-offset) 0)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "down"
                     (&view 'vert-offset) -= (&view 'height)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "right"
                     (&view 'horiz-offset) -= (&view 'width)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "left"
                     (&view 'horiz-offset) += (&view 'width)
                     (&view 'horiz-offset) = (min (&view 'horiz-offset) 0)
-                    &view @ ('clear)
                     &view @ ('paint)
 
     'on-mouse :
@@ -94,7 +87,6 @@ define-class Plot-View-Input-Handler
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
 
-                    &view @ ('clear)
                     &view @ ('paint)
 
             else

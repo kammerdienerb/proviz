@@ -12,12 +12,10 @@ define-class FlameGraph-View-Input-Handler
                         unref &widget
                 "up"
                     ++ (&view 'vert-offset)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "down"
                     if ((&view 'vert-offset) > 0)
                         -- (&view 'vert-offset)
-                        &view @ ('clear)
                         &view @ ('paint)
     'on-mouse :
         fn (&self &view &type &action &button &row &col)
@@ -38,7 +36,6 @@ define-class FlameGraph-View-Input-Handler
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
 
-                    &view @ ('clear)
                     &view @ ('paint)
             else
                 foreach widget-name (&view 'widgets)

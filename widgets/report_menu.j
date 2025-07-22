@@ -1,13 +1,14 @@
 define-class Report-Menu
-    'height       : 0
-    'width        : 0
-    'layer        : 1
-    'events       : (list)
-    'event-width  : 0
-    'count-width  : 0
-    'start-row    : 0
-    'num-rows     : 0
-    'selected-idx : nil
+    'height            : 0
+    'width             : 0
+    'layer             : 1
+    'events            : (list)
+    'event-width       : 0
+    'count-width       : 0
+    'start-row         : 0
+    'num-rows          : 0
+    'selected-idx      : nil
+    'activated-indices : (list)
 
     'new :
         fn ()
@@ -48,28 +49,26 @@ define-class Report-Menu
             row = 2
             foreach event (&self 'events)
                 text =
-                    fmt " % % samples"
+                    fmt " % % samples "
                         spad (0 - (&self 'event-width)) event
                         spad (&self 'count-width) (string ((&report-profile 'event-count-by-type) event))
 
+                idx = (row - 2)
+
                 col = 1
                 foreach char (chars text)
-                    if ((&self 'selected-idx) == (row - 2))
+                    if ((&self 'selected-idx) == idx)
                         @term:set-cell-bg   row col 0xffffff
                         @term:set-cell-fg   row col 0x000000
+                    elif (idx in (&self 'activated-indices))
+                        @term:set-cell-bg   row col 0x505050
+                        @term:set-cell-fg   row col 0xffffff
                     else
                         @term:unset-cell-bg row col
                         @term:set-cell-fg   row col 0xffffff
 
                     @term:set-cell-char row col char
                     ++ col
-
-                if ((&self 'selected-idx) == (row - 2))
-                    @term:set-cell-bg   row col 0xffffff
-                    @term:set-cell-fg   row col 0x000000
-                else
-                    @term:unset-cell-bg row col
-                    @term:set-cell-fg   row col 0xffffff
 
                 ++ row
 
@@ -112,7 +111,16 @@ define-class Report-Menu
                     &row < ((&self 'num-rows) + 2)
                     &col < (&self 'width)
 
-                (&self 'selected-idx) = (&row - 2)
-                response = 'report-add-widget
+                idx = (&row - 2)
+                (&self 'selected-idx) = idx
+
+
+                if (idx in (&self 'activated-indices))
+                    erase (&self 'activated-indices)
+                        index (&self 'activated-indices) idx
+                    response = 'report-remove-widget
+                else
+                    append (&self 'activated-indices) idx
+                    response = 'report-add-widget
 
             response

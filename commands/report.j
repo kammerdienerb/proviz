@@ -14,12 +14,10 @@ define-class Report-Sub-FlameGraph-View-Input-Handler
                         unref &widget
                 "up"
                     ++ (&view 'vert-offset)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "down"
                     if ((&view 'vert-offset) > 0)
                         -- (&view 'vert-offset)
-                        &view @ ('clear)
                         &view @ ('paint)
 
     'on-mouse :
@@ -39,7 +37,6 @@ define-class Report-Sub-FlameGraph-View-Input-Handler
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
 
-                    &view @ ('clear)
                     &view @ ('paint)
             else
                 foreach widget-name (&view 'widgets)
@@ -63,20 +60,16 @@ define-class Report-View-Input-Handler
                 "up"
                     (&view 'vert-offset) += (&view 'height)
                     (&view 'vert-offset) = (min (&view 'vert-offset) 0)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "down"
                     (&view 'vert-offset) -= (&view 'height)
-                    &view @ ('clear)
                     &view @ ('paint)
                 "right"
                     (&view 'horiz-offset) -= ((&view 'width) - (&menu 'width))
-                    &view @ ('clear)
                     &view @ ('paint)
                 "left"
                     (&view 'horiz-offset) += ((&view 'width) - (&menu 'width))
                     (&view 'horiz-offset) = (min (&view 'horiz-offset) (&menu 'width))
-                    &view @ ('clear)
                     &view @ ('paint)
 
     'on-mouse :
@@ -89,8 +82,6 @@ define-class Report-View-Input-Handler
                         &row > 1
                         &row <= (&menu 'height)
                         &col <= (&menu 'width)
-
-            changed-view = 0
 
             if (&button == 'right)
                 if (&action == 'down)
@@ -110,7 +101,6 @@ define-class Report-View-Input-Handler
                     &view <- ('last-right-button-row : &row)
                     &view <- ('last-right-button-col : &col)
 
-                    &view @ ('clear)
                     &view @ ('paint)
 
             else
@@ -129,14 +119,29 @@ define-class Report-View-Input-Handler
 
                             new-widget =
                                 (SSO-Heatmap 'new) &report-profile event (2 + report-widget-offset) (&menu 'width)
-#                             new-widget =
-#                                 (Line-Graph 'new) &report-profile event (2 + report-widget-offset) (&menu 'width)
 
                             report-widget-offset += ((new-widget 'height) + 1)
 
                             &view @
                                 'add-widget (fmt "flamescope/%" event)
                                     new-widget
+                            &view @ ('paint)
+
+                        'report-remove-widget
+                            event = ((&menu 'events) (&menu 'selected-idx))
+                            name  = (fmt "flamescope/%" event)
+                            &widget = ((&view 'widgets) name)
+
+                            foreach other-widget-name (&view 'widgets)
+                                if (startswith other-widget-name "flamescope/")
+                                    &other-widget = ((&view 'widgets) other-widget-name)
+                                    if ((&other-widget 'start-row) > (&widget 'start-row))
+                                        (&other-widget 'start-row) -= ((&widget 'height) + 1)
+                                    unref &other-widget
+
+                            report-widget-offset -= ((&widget 'height) + 1)
+                            unref &widget
+                            (&view 'widgets) -> name
                             &view @ ('paint)
 
                 else
@@ -172,8 +177,6 @@ define-class Report-View-Input-Handler
 
                                 set-view "flamegraph"
 
-                                changed-view = 1
-
                                 &current-view @
                                     'add-widget "flamegraph"
                                         (Flame-Graph 'new) &report-profile (&widget 'event) (range 0) (range 1) 2
@@ -190,10 +193,6 @@ define-class Report-View-Input-Handler
                             if ((widget-name != range-hover-widget-name) and ('set-mirror-range in ((&widget '__class__))))
                                 &widget @ ('set-mirror-range &view range)
                             unref &widget
-
-            if (not changed-view)
-                &menu @ ('paint &view 0 0)
-                @term:flush
 
 report-command =
     fn (&profile)

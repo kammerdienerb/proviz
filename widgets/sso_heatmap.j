@@ -1,24 +1,24 @@
 define-class SSO-Heatmap-Blip
-    'row   : 0
-    'col   : 0
-    'color : 0x000000
-    'count : 0
+    'row-off : 0
+    'col     : 0
+    'color   : 0x000000
+    'count   : 0
 
     'new :
-        fn (&row &col &color &count)
+        fn (&row-off &col &color &count)
             blip = (new-instance SSO-Heatmap-Blip)
 
-            (blip 'row)   = &row
-            (blip 'col)   = &col
-            (blip 'color) = &color
-            (blip 'count) = &count
+            (blip 'row-off) = &row-off
+            (blip 'col)     = &col
+            (blip 'color)   = &color
+            (blip 'count)   = &count
 
             move blip
 
     'paint :
-        fn (&self &view &vert-offset &horiz-offset)
+        fn (&self &view &start-row &vert-offset &horiz-offset)
             @term:set-cell-bg
-                ((&self 'row) + &vert-offset)
+                ((&start-row + (&self 'row-off)) + &vert-offset)
                 ((&self 'col) + &horiz-offset)
                 (&self 'color)
 
@@ -52,7 +52,7 @@ define-class SSO-Heatmap
 
             &grid-height = (map 'grid-height)
 
-            row = (&start-row + &grid-height)
+            row-off = &grid-height
             col = 1
             foreach &interval (&profile 'intervals)
                 count = (select (&event in (&interval 'event-accum-by-type)) ((&interval 'event-accum-by-type) &event) 0)
@@ -63,13 +63,13 @@ define-class SSO-Heatmap
                             sint ((1.0 - value) * 255)
 
                 append (map 'blips)
-                    (SSO-Heatmap-Blip 'new) row col color count
+                    (SSO-Heatmap-Blip 'new) row-off col color count
 
-                if (row == (&start-row + 1))
-                    row = (&start-row + &grid-height)
+                if (row-off == 1)
+                    row-off = &grid-height
                     ++ col
                 else
-                    -- row
+                    -- row-off
 
             unref &grid-height
             move map
@@ -86,7 +86,7 @@ define-class SSO-Heatmap
                 ++ col
 
             foreach &blip (&self 'blips)
-                &blip @ ('paint &view &vert-offset &horiz-offset)
+                &blip @ ('paint &view (&self 'start-row) &vert-offset &horiz-offset)
 
     'coord-to-blip-idx :
         fn (&self &view &row &col)
@@ -99,13 +99,13 @@ define-class SSO-Heatmap
         fn (&self &view &idx)
             &blip = ((&self 'blips) &idx)
             (&blip 'color) &= 0x00ffff
-            &blip @ ('paint &view (&self 'vert-offset) (&self 'horiz-offset))
+            &blip @ ('paint &view (&self 'start-row) (&self 'vert-offset) (&self 'horiz-offset))
 
     'reset-blip-color :
         fn (&self &view &idx)
             &blip = ((&self 'blips) &idx)
             (&blip 'color) |= 0xff0000
-            &blip @ ('paint &view (&self 'vert-offset) (&self 'horiz-offset))
+            &blip @ ('paint &view (&self 'start-row) (&self 'vert-offset) (&self 'horiz-offset))
 
     'get-selected-range :
         fn (&self)

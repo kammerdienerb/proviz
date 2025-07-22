@@ -35,6 +35,8 @@ define-class View
 
     'paint :
         fn (&self)
+            &self @ ('clear)
+
             by-layer = (list)
 
             foreach widget-name (&self 'widgets)
