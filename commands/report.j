@@ -188,11 +188,17 @@ define-class Report-View-Input-Handler
                     if (range-hover-widget-name != nil)
                         range = (((&view 'widgets) range-hover-widget-name) @ ('get-selected-range))
 
+                        did-paint-other-range = 0
+
                         foreach widget-name (&view 'widgets)
                             &widget = ((&view 'widgets) widget-name)
                             if ((widget-name != range-hover-widget-name) and ('set-mirror-range in ((&widget '__class__))))
                                 &widget @ ('set-mirror-range &view range)
+                                did-paint-other-range = 1
                             unref &widget
+
+                        if did-paint-other-range
+                            @term:flush
 
 report-command =
     fn (&profile)
