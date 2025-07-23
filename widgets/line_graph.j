@@ -243,7 +243,7 @@ define-class Line-Graph
                             &self @ ('reset-col-color &view (&self 'anchor-idx))
                             &self @ ('set-col-color &view idx)
                             (&self 'anchor-idx) = idx
-                            &view @ ('status-text (fmt "%: %" (&self 'event) (((&self 'points) idx) 'count)))
+                            &view @ ('status-text (fmt "%: % | Index: %" (&self 'event) (((&self 'points) idx) 'count) idx))
 
                             response = 'range-hover
 
