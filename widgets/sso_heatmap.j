@@ -13,7 +13,7 @@ define-class SSO-Heatmap-Blip
             (blip 'color)   = &color
             (blip 'count)   = &count
 
-            move blip
+            blip
 
     'paint :
         fn (&self &view &start-row &vert-offset &horiz-offset)
@@ -72,7 +72,7 @@ define-class SSO-Heatmap
                     -- row-off
 
             unref &grid-height
-            move map
+            map
 
     'paint :
         fn (&self &view &vert-offset &horiz-offset)
@@ -112,14 +112,11 @@ define-class SSO-Heatmap
             &a = (&self 'anchor-idx)
             &t = (&self 'tail-idx)
 
-            if (&t == nil)
-                range = (&a : 1)
-            else
-                range =
-                    select (&a <= &t)
-                        &a : ((&t - &a) + 1)
-                        &t : ((&a - &t) + 1)
-            move range
+            select (&t == nil)
+                &a : 1
+                select (&a <= &t)
+                    &a : ((&t - &a) + 1)
+                    &t : ((&a - &t) + 1)
 
     'reset-selection :
         fn (&self &view)

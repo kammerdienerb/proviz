@@ -1809,20 +1809,26 @@ static Julie_Value *julie_force_copy(Julie_Interp *interp, Julie_Value *value) {
 }
 
 
-static void _julie_free_value_real(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes);
+static void _julie_free_value_real(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes, Julie_Value *survivor);
 
 __attribute__((always_inline))
-static inline void _julie_free_value(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes) {
+static inline void _julie_free_value(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes, Julie_Value *survivor) {
 
     JULIE_ASSERT(free_root || !value->owned);
+
+    if (unlikely(value == survivor)) {
+        survivor->owned        = 0;
+        survivor->borrow_count = 0;
+        return;
+    }
 
     if (value->owned        && !force)             { return; }
     if (value->source_node  && !free_source_nodes) { return; }
 
-    _julie_free_value_real(interp, value, free_root, force, free_source_nodes);
+    _julie_free_value_real(interp, value, free_root, force, free_source_nodes, survivor);
 }
 
-static void _julie_free_value_real(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes) {
+static void _julie_free_value_real(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes, Julie_Value *survivor) {
     int                  i;
     Julie_Value         *it;
     Julie_Value         *key;
@@ -1848,22 +1854,22 @@ done_string:;
 
         case JULIE_LIST:
             ARRAY_FOR_EACH(value->list, it) {
-                _julie_free_value(interp, it, 1, force, free_source_nodes);
+                _julie_free_value(interp, it, 1, force, free_source_nodes, survivor);
             }
             julie_array_free(value->list);
             break;
 
         case JULIE_OBJECT:
             hash_table_traverse((_Julie_Object)value->object, key, val) {
-                _julie_free_value(interp, key, 1, force, free_source_nodes);
-                _julie_free_value(interp, *val, 1, force, free_source_nodes);
+                _julie_free_value(interp, key, 1, force, free_source_nodes, NULL);
+                _julie_free_value(interp, *val, 1, force, free_source_nodes, survivor);
             }
             hash_table_free((_Julie_Object)value->object);
             break;
 
         case JULIE_FN:
             ARRAY_FOR_EACH(value->list, it) {
-                _julie_free_value(interp, it, 1, force, free_source_nodes);
+                _julie_free_value(interp, it, 1, force, free_source_nodes, survivor);
             }
             julie_array_free(value->list);
             break;
@@ -1872,13 +1878,13 @@ done_string:;
             closure = julie_array_get_aux(value->list);
             hash_table_traverse(closure->captures, sym, val) {
                 (void)sym;
-                _julie_free_value(interp, *val, 1, force, free_source_nodes);
+                _julie_free_value(interp, *val, 1, force, free_source_nodes, survivor);
             }
             hash_table_free(closure->captures);
             free(closure);
 
             ARRAY_FOR_EACH(value->list, it) {
-                _julie_free_value(interp, it, 1, force, free_source_nodes);
+                _julie_free_value(interp, it, 1, force, free_source_nodes, survivor);
             }
             julie_array_free(value->list);
 
@@ -1891,19 +1897,23 @@ done_string:;
 }
 
 void julie_free_value(Julie_Interp *interp, Julie_Value *value) {
-    _julie_free_value(interp, value, 1, 0, 0);
+    _julie_free_value(interp, value, 1, 0, 0, NULL);
 }
 
 void julie_force_free_value(Julie_Interp *interp, Julie_Value *value) {
-    _julie_free_value(interp, value, 1, 1, 0);
+    _julie_free_value(interp, value, 1, 1, 0, NULL);
+}
+
+void julie_force_free_value_with_survivor(Julie_Interp *interp, Julie_Value *value, Julie_Value *survivor) {
+    _julie_free_value(interp, value, 1, 1, 0, survivor);
 }
 
 void julie_free_and_reuse_value(Julie_Interp *interp, Julie_Value *value) {
-    _julie_free_value(interp, value, 0, 1, 0);
+    _julie_free_value(interp, value, 0, 1, 0, NULL);
 }
 
 void julie_free_source_node(Julie_Interp *interp, Julie_Value *value) {
-    _julie_free_value(interp, value, 1, 1, 1);
+    _julie_free_value(interp, value, 1, 1, 1, NULL);
 }
 
 
@@ -2801,7 +2811,7 @@ static Julie_Symbol_Table *julie_push_local_symtab(Julie_Interp *interp) {
     return symtab;
 }
 
-static void julie_clear_symtab(Julie_Interp *interp, Julie_Symbol_Table *symtab) {
+static void julie_clear_symtab(Julie_Interp *interp, Julie_Symbol_Table *symtab, Julie_Value *survivor) {
     Julie_Array      *collect;
     unsigned          i;
     Julie_String_ID   id;
@@ -2837,7 +2847,7 @@ static void julie_clear_symtab(Julie_Interp *interp, Julie_Symbol_Table *symtab)
 
     ARRAY_FOR_EACH(collect, val) {
         if (!val->source_node) {
-            julie_force_free_value(interp, val);
+            julie_force_free_value_with_survivor(interp, val, survivor);
         }
     }
 
@@ -2850,7 +2860,7 @@ static void julie_clear_symtab(Julie_Interp *interp, Julie_Symbol_Table *symtab)
     memset(symtab, 0, sizeof(*symtab));
 }
 
-static Julie_Status julie_pop_local_symtab(Julie_Interp *interp, Julie_String_ID *err_sym) {
+static Julie_Status julie_pop_local_symtab(Julie_Interp *interp, Julie_String_ID *err_sym, Julie_Value *survivor) {
     Julie_Symbol_Table  *symtab;
     unsigned             i;
     Julie_String_ID      id;
@@ -2918,7 +2928,7 @@ static Julie_Status julie_pop_local_symtab(Julie_Interp *interp, Julie_String_ID
         }
     }
 
-    julie_clear_symtab(interp, symtab);
+    julie_clear_symtab(interp, symtab, survivor);
 
     interp->local_symtab_depth -= 1;
 
@@ -8836,7 +8846,7 @@ static Julie_Status julie_builtin_spad(Julie_Interp *interp, Julie_Value *tree, 
         goto out;
     }
 
-    width = w->type == JULIE_SINT ? w->sint : w->uint;
+    width = w->type == JULIE_SINT ? w->sint : (long long)w->uint;
     ljust = width < 0;
     s     = julie_to_string(interp, val, JULIE_NO_QUOTE);
     len   = strlen(s);
@@ -10426,12 +10436,7 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
                 }
 
                 if (i == n_exprs - 1) {
-                    if (!ev->owned) {
-                        *result = ev;
-                    } else {
-                        *result = julie_force_copy(interp, ev);
-                        julie_free_value(interp, ev);
-                    }
+                    *result = ev;
                 } else {
                     julie_free_value(interp, ev);
                 }
@@ -10441,14 +10446,15 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
 
 cleanup:;
             if (status == JULIE_SUCCESS) {
-                status = julie_pop_local_symtab(interp, &id);
+                JULIE_ASSERT(*result != NULL);
+                status = julie_pop_local_symtab(interp, &id, *result);
                 if (status != JULIE_SUCCESS) {
                     *result = NULL;
                     julie_make_bind_error(interp, expr, status, id);
                 }
             } else {
                 if (pushed_symtab) {
-                    julie_pop_local_symtab(interp, NULL);
+                    julie_pop_local_symtab(interp, NULL, NULL);
                 }
                 *result = NULL;
             }
@@ -11102,13 +11108,13 @@ void julie_free(Julie_Interp *interp) {
     for (i = julie_array_len(interp->local_symtab_stack); i > 0; i -= 1) {
         symtab = julie_array_elem(interp->local_symtab_stack, i - 1);
         if (i <= interp->local_symtab_depth) {
-            julie_clear_symtab(interp, symtab);
+            julie_clear_symtab(interp, symtab, NULL);
         }
         free(symtab);
     }
     julie_array_free(interp->local_symtab_stack);
 
-    julie_clear_symtab(interp, interp->global_symtab);
+    julie_clear_symtab(interp, interp->global_symtab, NULL);
     free(interp->global_symtab);
 
     ARRAY_FOR_EACH(interp->package_values, it) {

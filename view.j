@@ -14,7 +14,7 @@ define-class View
             view <- ('height : &height)
             view <- ('width  : &width)
             foreach &arg ... (view <- &arg)
-            move view
+            view
 
     'add-widget :
         fn (&self &name &widget)

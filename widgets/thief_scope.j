@@ -12,7 +12,7 @@ define-class Thief-Scope-Blip
             (blip 'col)   = &col
             (blip 'color) = &color
 
-            move blip
+            blip
 
     'paint :
         fn (&self &view &blip-row)
@@ -37,7 +37,7 @@ define-class Thief-Scope-Guide-Blip
             (blip 'col)   = &col
             (blip 'color) = &color
 
-            move blip
+            blip
 
     'paint :
         fn (&self &view &blip-row)
@@ -139,7 +139,7 @@ define-class Thief-Scope
 
                 col += 1
 
-            move map
+            map
 
     'paint :
         fn (&self &view &vert-offset &horiz-offset)

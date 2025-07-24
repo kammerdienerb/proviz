@@ -32,7 +32,7 @@ define-class Report-Menu
             (menu 'event-width) = max-event-width
             (menu 'count-width) = max-count-width
 
-            move menu
+            menu
 
     'paint :
         fn (&self &view &vert-offset &horiz-offset)

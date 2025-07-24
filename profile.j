@@ -68,7 +68,7 @@ define-class Profile
 
             (p 'strings) <- ("" : 0)
 
-            move p
+            p
 
     'string-id :
         fn (&self &s)

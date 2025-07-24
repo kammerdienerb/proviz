@@ -35,7 +35,7 @@ define-class Flame-Graph-Frame
             (frame 'type)  = type
             (frame 'color) = ((Flame-Graph-Frame 'get-color) type (rand))
 
-            move frame
+            frame
 
     'add-flame :
         fn (&self &stack &count)
@@ -200,7 +200,7 @@ define-class Flame-Graph
             flame @ ('sort)
 
             unref &base
-            move flame
+            flame
 
     'sort :
         fn (&self)
