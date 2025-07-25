@@ -15,11 +15,7 @@ define-class Flame-Graph-Frame
 
             type = 'unknown
 
-            if (startswith label "py::")
-                type = 'python
-            elif (contains label "::")
-                type = 'cpp
-            elif (endswith label "_[k]")
+            if (endswith label "_[k]")
                 type = 'kernel
                 label = (substr label 0 ((len label) - 4))
             elif (endswith label "_[g]")
@@ -30,6 +26,10 @@ define-class Flame-Graph-Frame
                 label = (substr label 0 ((len label) - 4))
             elif (label == "-")
                 type = 'divider
+            elif (startswith label "py::")
+                type = 'python
+            elif (contains label "::")
+                type = 'cpp
 
             (frame 'label) = (move label)
             (frame 'type)  = type
