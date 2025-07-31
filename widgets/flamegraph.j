@@ -17,13 +17,13 @@ define-class Flame-Graph-Frame
 
             if (endswith label "_[k]")
                 type = 'kernel
-                label = (substr label 0 ((len label) - 4))
+                label = (substr label 0 -4)
             elif (endswith label "_[g]")
                 type = 'gpu-inst
-                label = (substr label 0 ((len label) - 4))
+                label = (substr label 0 -4)
             elif (endswith label "_[G]")
                 type = 'gpu-symbol
-                label = (substr label 0 ((len label) - 4))
+                label = (substr label 0 -4)
             elif (label == "-")
                 type = 'divider
             elif (startswith label "py::")
@@ -318,7 +318,7 @@ define-class Flame-Graph
 
             if (not out-of-bounds)
                 if (startswith new-zstack ";")
-                    new-zstack = (substr new-zstack 1 ((len new-zstack) - 1))
+                    new-zstack = (substr new-zstack 1 -1)
 
                 if ((&self 'last-sel-row) and (&self 'last-sel-col))
                     &self @ ('paint-hover-frame &view (&self 'last-sel-row) (&self 'last-sel-col) nil)

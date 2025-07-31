@@ -9641,6 +9641,13 @@ static Julie_Status julie_builtin_substr(Julie_Interp *interp, Julie_Value *expr
         goto out_free;
     }
 
+    if (l < 0) {
+        l = cl - (-l);
+        if (l < 0) {
+            l = 0;
+        }
+    }
+
     if (l > cl - p) {
         l = cl - p;
     }

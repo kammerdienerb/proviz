@@ -29,7 +29,7 @@ options <- ('FILES   : (list))
 option-name-to-arg =
     fn (&option-name)
         s = (string &option-name)
-        s = (substr s 1 ((len s) - 1))
+        s = (substr s 1 -1)
         s = (fmt "--%" s)
         s
 

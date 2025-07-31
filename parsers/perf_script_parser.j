@@ -10,9 +10,6 @@
 # 7. Event name
 # 8. Tracepoint fields. Can have multiple, separated by a comma and space.
 
-ends-in-colon-regex = "(.*):$"
-pid-regex = "([0-9]+)/([0-9])"
-
 parse-perf-script =
     fn (&profile &file &view)
         lines    = (fread-lines &file)
@@ -30,14 +27,14 @@ parse-perf-script =
                     time-field = 0
                     event-field = 0
                     repeat i line-len
-                        colon-match = ((split-line i) =~ ends-in-colon-regex)
-                        if (colon-match != nil)
+                        if (endswith (split-line i) ":")
                             if (time-field == 0)
                                 time-field = i
-                                time = (parse-float (colon-match 1))
+                                time = (parse-float (split-line i))
                             elif (event-field == 0)
                                 event-field = i
-                                event = (fmt "perf:%" (colon-match 1))
+                                event = (fmt "perf:%" (substr (split-line i) 0 -1))
+
                     if (time-field == 0)
                         wlog (fmt "Failed to parse time from: %" &line)
                     if (event-field == 0)
@@ -54,7 +51,7 @@ parse-perf-script =
                     if (startswith ((split-line pid-field)) "[")
                         -- pid-field
 
-                    pid-match = ((split-line pid-field) =~ pid-regex)
+                    pid-match = ((split-line pid-field) =~ "([0-9]+)/([0-9])")
                     if (pid-match != nil)
                         # We got a PID and TID
                         pid = (parse-int (pid-match 1))
@@ -76,7 +73,7 @@ parse-perf-script =
 
                     sym = (move (matches 2))
                     if (startswith sym "[unknown]")
-                        sym = (fmt "0x%%" (matches 1) (substr sym 9 ((len sym) - 9)))
+                        sym = (fmt "0x%%" (matches 1) (substr sym 9 -9))
 
                     if (len stack)
                         stack = (fmt "%;%" sym stack)
