@@ -10267,12 +10267,13 @@ static char *julie_get_sandbox_error_string(Julie_Error_Info *info) {
     message[0] = 0;
     size       = 64;
 
-#define P(_fmt, ...)                                                           \
-do {                                                                           \
-    while (snprintf(message, size, "%s" _fmt, message, __VA_ARGS__) >= size) { \
-        size += 64;                                                            \
-        message = realloc(message, size);                                      \
-    }                                                                          \
+#define P(_fmt, ...)                                                                                      \
+do {                                                                                                      \
+    char *write_to = message + strlen(message);                                                           \
+    while (snprintf(write_to, size - strlen(message), (_fmt), __VA_ARGS__) >= (size - strlen(message))) { \
+        size += 64;                                                                                       \
+        message = realloc(message, size);                                                                 \
+    }                                                                                                     \
 } while (0)
 
     P("%llu:%llu: error: %s",
