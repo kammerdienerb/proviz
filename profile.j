@@ -148,8 +148,42 @@ define-class Profile
             update = (length / (&view 'width))
             ln     = 0
 
+            init-bindings = (object)
+            foreach event (&self 'event-count-by-type)
+                init-bindings <- ((symbol event) : 0)
+
             foreach &interval (&self 'intervals)
                 &interval @ ('accum)
+
+                foreach user-metric (options 'METRICS)
+                    bindings = init-bindings
+                    foreach event (&interval 'event-accum-by-type)
+                        bindings <- ((symbol event) : ((&interval 'event-accum-by-type) event))
+
+                    formula = ((options 'METRICS) user-metric)
+                    result  = (eval-sandboxed formula bindings)
+                    count   = (result 0)
+                    t       = (typeof count)
+
+                    if (((result 1) 'status) != 0)
+                        die "problem computing new-metric expression\n%" ((result 1) 'error-message)
+                    elif
+                        or
+                            t == "signed integer"
+                            t == "unsigned integer"
+                            t == "float"
+
+                        &interval @
+                            'push-sample
+                                object
+                                    'type  : user-metric
+                                    'time  : (&interval 'start-time)
+                                    'count : count
+
+                        (&interval 'event-accum-by-type) <-
+                            user-metric : (accum-samples user-metric ((&interval 'events-by-type) user-metric))
+
+                        ++ (get-or-insert (&self 'event-count-by-type) user-metric 0)
 
                 if (((++ ln) % update) == 0)
                     &view @ ('loading-bar-update ((float ln) / length))

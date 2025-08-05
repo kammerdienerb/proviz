@@ -10,6 +10,11 @@ options-def :=
                 "float"
                 10.0
                 "Throw an error when the time between two consecutive samples exceeds this value (seconds)."
+        'new-metric :
+            list
+                "string"
+                nil
+                "Create a new metric. String must be of the form 'METRIC-NAME = JULIE-EXPRESSION'. Valid event names in the profile can be referenced in the expression. May be repeated."
 
 list-cmds :=
     list
@@ -25,6 +30,7 @@ foreach name options-def
     options <- (name : default-value)
 
 options <- ('FILES   : (list))
+options <- ('METRICS : (object))
 
 option-name-to-arg =
     fn (&option-name)
@@ -106,7 +112,14 @@ parse-cmdline-options =
                             die "bad float value '%' for arg %\n\n%" value arg (usage)
                         value = f
 
-                (options option) = value
+                if (option == 'new-metric)
+                    matches = (value =~ "[[:space:]]*([^[:space:]()]+)[[:space:]]*=[[:space:]]*(.*)")
+                    if (matches == nil)
+                        die "invalid new-metric string '%'\n\n%" value (usage)
+
+                    (options 'METRICS) <- ((matches 1) : (matches 2))
+                else
+                    (options option) = value
 
             elif got-cmd
                 parts = (split arg ",")

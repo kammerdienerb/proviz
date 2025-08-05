@@ -4257,6 +4257,39 @@ out:;
     return status;
 }
 
+static Julie_Status julie_builtin_symbol(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *val;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &val);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out;
+    }
+
+    if (val->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, val->type);
+        goto out_free;
+    }
+
+    *result = julie_symbol_value(interp, val->tag == JULIE_STRING_TYPE_INTERN ? val->string_id : julie_get_string_id(interp, julie_value_cstring(val)));
+
+out_free:;
+    julie_free_value(interp, val);
+
+out:;
+    return status;
+}
+
 static Julie_Status julie_builtin_id(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status  status;
     Julie_Value  *value;
@@ -10272,7 +10305,9 @@ do {                                                                            
     char *write_to = message + strlen(message);                                                           \
     while (snprintf(write_to, size - strlen(message), (_fmt), __VA_ARGS__) >= (size - strlen(message))) { \
         size += 64;                                                                                       \
+        int off = (write_to - message);                                                                   \
         message = realloc(message, size);                                                                 \
+        write_to = message + off;                                                                         \
     }                                                                                                     \
 } while (0)
 
@@ -11383,6 +11418,7 @@ Julie_Interp *julie_init_interp(void) {
     JULIE_BIND_FN(      "uint",                  julie_builtin_uint);
     JULIE_BIND_FN(      "float",                 julie_builtin_float);
     JULIE_BIND_FN(      "string",                julie_builtin_string);
+    JULIE_BIND_FN(      "symbol",                julie_builtin_symbol);
     JULIE_BIND_FN(      "`",                     julie_builtin_id);
     JULIE_BIND_FN(      "'",                     julie_builtin_quote);
 
