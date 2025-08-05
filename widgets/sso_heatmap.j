@@ -56,7 +56,7 @@ define-class SSO-Heatmap
             col = 1
             foreach &interval (&profile 'intervals)
                 count = (select (&event in (&interval 'event-accum-by-type)) ((&interval 'event-accum-by-type) &event) 0)
-                value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
+                value = ((float count) /? largest-count)
                 color =
                     0xff0000 |
                         ((sint ((1.0 - value) * 255)) << 8) |

@@ -49,9 +49,11 @@ define-class Line-Graph
                 if (&event in (&interval 'event-accum-by-type))
                     largest-count = (max largest-count ((&interval 'event-accum-by-type) &event))
 
+            printf "%: %\n" &event largest-count
+
             foreach &interval (&profile 'intervals)
                 count = (select (&event in (&interval 'event-accum-by-type)) ((&interval 'event-accum-by-type) &event) 0)
-                value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
+                value = ((float count) /? largest-count)
                 append (graph 'points)
                     object ('count : count) ('value : value)
 

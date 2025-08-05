@@ -10,19 +10,19 @@ register-accum-fn =
 
 sample-accum-sum =
     fn (&samples)
-        sum = 0
+        sum = 0.0
         foreach &sample &samples
             sum += (&sample 'count)
-        sum
+        select ((float (sint sum)) == sum)
+            sint sum
+            sum
 
 sample-accum-avg =
     fn (&samples)
-        sum = 0
-        if (len &samples)
-            foreach &sample &samples
-                sum += (&sample 'count)
-            sum /= (len &samples)
-        sum
+        sum = 0.0
+        foreach &sample &samples
+            sum += (&sample 'count)
+        sum /? (len &samples)
 
 accum-samples =
     fn (&event-name &samples)
@@ -81,6 +81,77 @@ define-class Profile
     'push-sample :
         fn (&self &sample)
             sorted-insert (&self 'samples) (move &sample) sample-time-cmp
+
+    'compute-user-metric-expression :
+        fn (&self &interval &type &metric-name &formula &bindings)
+            result = (eval-sandboxed &formula &bindings)
+            value  = (result 0)
+
+            valid-value-types = (list "signed integer" "unsigned integer" "float")
+            type-error-string = "???"
+
+            if (((result 1) 'status) != 0)
+                die "problem computing % expression\n%"
+                    select (&type == 'metrics-file) "metrics-file" "new-metric"
+                    ((result 1) 'error-message)
+
+            new-metrics = (object)
+
+            if (&type == 'cmd-line)
+                type-error-string = "new-metric"
+                new-metrics <- (&metric-name : value)
+
+            elif (&type == 'metrics-file)
+                type-error-string = "metrics-file"
+
+                if ((typeof value) != "object")
+                    die "metrics-file did not produce an object, got %" (typeof value)
+
+                foreach user-metric value
+                    if ((typeof user-metric) != "string")
+                        die "object key '%' from metrics-file is not a valid metric name" user-metric
+                    new-metrics <- (user-metric : (value user-metric))
+
+
+            foreach user-metric new-metrics
+                &value = (new-metrics user-metric)
+                if (&value == nil)
+                    &value = 0
+
+                t = (typeof &value)
+
+                if (not (t in valid-value-types))
+                    die "value '%' from % is not a number, got %" type-error-string &value t
+
+                &interval @
+                    'push-sample
+                        object
+                            'type  : user-metric
+                            'time  : (&interval 'start-time)
+                            'count : &value
+
+                (&interval 'event-accum-by-type) <-
+                    user-metric : (accum-samples user-metric ((&interval 'events-by-type) user-metric))
+
+                ++ (get-or-insert (&self 'event-count-by-type) user-metric 0)
+
+                unref &value
+
+    'compute-user-metrics :
+        fn (&self &interval)
+            bindings = (object)
+            foreach event (&self 'event-count-by-type)
+                bindings <- ((symbol event) : 0.0)
+            foreach event (&interval 'event-accum-by-type)
+                bindings <- ((symbol event) : (float ((&interval 'event-accum-by-type) event)))
+
+            if ((options 'metrics-file) != nil)
+                &formula = (options 'METRICS-FILE-STRING)
+                &self @ ('compute-user-metric-expression &interval 'metrics-file nil &formula bindings)
+
+            foreach user-metric (options 'METRICS)
+                formula = ((options 'METRICS) user-metric)
+                &self @ ('compute-user-metric-expression &interval 'cmd-line user-metric formula bindings)
 
     'postprocess :
         fn (&self &view)
@@ -148,42 +219,9 @@ define-class Profile
             update = (length / (&view 'width))
             ln     = 0
 
-            init-bindings = (object)
-            foreach event (&self 'event-count-by-type)
-                init-bindings <- ((symbol event) : 0)
-
             foreach &interval (&self 'intervals)
                 &interval @ ('accum)
-
-                foreach user-metric (options 'METRICS)
-                    bindings = init-bindings
-                    foreach event (&interval 'event-accum-by-type)
-                        bindings <- ((symbol event) : ((&interval 'event-accum-by-type) event))
-
-                    formula = ((options 'METRICS) user-metric)
-                    result  = (eval-sandboxed formula bindings)
-                    count   = (result 0)
-                    t       = (typeof count)
-
-                    if (((result 1) 'status) != 0)
-                        die "problem computing new-metric expression\n%" ((result 1) 'error-message)
-                    elif
-                        or
-                            t == "signed integer"
-                            t == "unsigned integer"
-                            t == "float"
-
-                        &interval @
-                            'push-sample
-                                object
-                                    'type  : user-metric
-                                    'time  : (&interval 'start-time)
-                                    'count : count
-
-                        (&interval 'event-accum-by-type) <-
-                            user-metric : (accum-samples user-metric ((&interval 'events-by-type) user-metric))
-
-                        ++ (get-or-insert (&self 'event-count-by-type) user-metric 0)
+                &self @ ('compute-user-metrics &interval)
 
                 if (((++ ln) % update) == 0)
                     &view @ ('loading-bar-update ((float ln) / length))

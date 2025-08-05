@@ -215,11 +215,12 @@ typedef struct Julie_Error_Info_Struct Julie_Error_Info;
 
 typedef void (*Julie_Error_Callback)(Julie_Error_Info *info);
 typedef void (*Julie_Output_Callback)(const char*, int);
-typedef Julie_Status (*Julie_Eval_Callback)(Julie_Value *value);
-typedef Julie_Status (*Julie_Post_Eval_Callback)(Julie_Status status, Julie_Value *value, Julie_Value **result);
+typedef Julie_Status (*Julie_Eval_Callback)(Julie_Interp *interp, Julie_Value *value);
+typedef Julie_Status (*Julie_Post_Eval_Callback)(Julie_Interp *interp, Julie_Status status, Julie_Value *value, Julie_Value **result);
 typedef Julie_Status (*Julie_Fn)(Julie_Interp*, Julie_Value*, unsigned, Julie_Value**, Julie_Value**);
 
 Julie_Interp *julie_init_interp(void);
+Julie_Interp *julie_init_sandboxed_interp(void);
 Julie_Status julie_set_error_callback(Julie_Interp *interp, Julie_Error_Callback cb);
 Julie_Status julie_set_output_callback(Julie_Interp *interp, Julie_Output_Callback cb);
 Julie_Status julie_set_eval_callback(Julie_Interp *interp, Julie_Eval_Callback cb);
@@ -1464,6 +1465,7 @@ struct Julie_Interp_Struct {
 #endif
 
     Julie_Error_Info                       sandbox_error_info;
+    int                                    is_sandboxed;
 
     Julie_Array                           *argv;
 
@@ -4894,7 +4896,7 @@ out:;
     return status;
 }
 
-static Julie_Status julie_builtin_div(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+static Julie_Status _julie_builtin_div(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result, int safe) {
     Julie_Status  status;
     Julie_Value  *a;
     Julie_Value  *b;
@@ -4909,7 +4911,7 @@ static Julie_Status julie_builtin_div(Julie_Interp *interp, Julie_Value *expr, u
     ||  (b->type == JULIE_UINT  && b->uint     == 0)
     ||  (b->type == JULIE_FLOAT && b->floating == 0.0)) {
 
-        *result = julie_nil_value(interp);
+        *result = safe ? julie_sint_value(interp, 0.0) : julie_nil_value(interp);
     } else {
         if (a->type == JULIE_SINT && b->type == JULIE_SINT) {
             *result = julie_sint_value(interp, a->sint / b->sint);
@@ -4941,7 +4943,15 @@ out:;
     return status;
 }
 
-static Julie_Status julie_builtin_div_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+static Julie_Status julie_builtin_div(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_div(interp, expr, n_values, values, result, 0);
+}
+
+static Julie_Status julie_builtin_div_safe(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_div(interp, expr, n_values, values, result, 1);
+}
+
+static Julie_Status _julie_builtin_div_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result, int safe) {
     Julie_Status  status;
     Julie_Value  *a;
     Julie_Value  *b;
@@ -4956,8 +4966,13 @@ static Julie_Status julie_builtin_div_assign(Julie_Interp *interp, Julie_Value *
     ||  (b->type == JULIE_UINT  && b->uint     == 0)
     ||  (b->type == JULIE_FLOAT && b->floating == 0.0)) {
 
-        a->type = JULIE_NIL;
-        a->uint = 0;
+        if (safe) {
+            a->type = JULIE_SINT;
+            a->sint = 0;
+        } else {
+            a->type = JULIE_NIL;
+            a->uint = 0;
+        }
     } else {
         if (a->type == JULIE_SINT && b->type == JULIE_SINT) {
             a->sint /= b->sint;
@@ -4991,7 +5006,15 @@ out:;
     return status;
 }
 
-static Julie_Status julie_builtin_mod(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+static Julie_Status julie_builtin_div_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_div_assign(interp, expr, n_values, values, result, 0);
+}
+
+static Julie_Status julie_builtin_div_assign_safe(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_div_assign(interp, expr, n_values, values, result, 1);
+}
+
+static Julie_Status _julie_builtin_mod(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result, int safe) {
     Julie_Status  status;
     Julie_Value  *a;
     Julie_Value  *b;
@@ -5024,7 +5047,7 @@ static Julie_Status julie_builtin_mod(Julie_Interp *interp, Julie_Value *expr, u
     ||  (b->type == JULIE_UINT  && b->uint     == 0)
     ||  (b->type == JULIE_FLOAT && b->floating == 0.0)) {
 
-        *result = julie_nil_value(interp);
+        *result = safe ? julie_sint_value(interp, 0.0) : julie_nil_value(interp);
     } else {
         if (a->type == JULIE_SINT && b->type == JULIE_SINT) {
             *result = julie_sint_value(interp, a->sint % b->sint);
@@ -5058,7 +5081,15 @@ out:;
     return status;
 }
 
-static Julie_Status julie_builtin_mod_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+static Julie_Status julie_builtin_mod(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_mod(interp, expr, n_values, values, result, 0);
+}
+
+static Julie_Status julie_builtin_mod_safe(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_mod(interp, expr, n_values, values, result, 1);
+}
+
+static Julie_Status _julie_builtin_mod_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result, int safe) {
     Julie_Status  status;
     Julie_Value  *a;
     Julie_Value  *b;
@@ -5073,8 +5104,13 @@ static Julie_Status julie_builtin_mod_assign(Julie_Interp *interp, Julie_Value *
     ||  (b->type == JULIE_UINT  && b->uint     == 0)
     ||  (b->type == JULIE_FLOAT && b->floating == 0.0)) {
 
-        a->type = JULIE_NIL;
-        a->uint = 0;
+        if (safe) {
+            a->type = JULIE_SINT;
+            a->sint = 0;
+        } else {
+            a->type = JULIE_NIL;
+            a->uint = 0;
+        }
     } else {
         if (a->type == JULIE_SINT && b->type == JULIE_SINT) {
             a->sint %= b->sint;
@@ -5106,6 +5142,14 @@ static Julie_Status julie_builtin_mod_assign(Julie_Interp *interp, Julie_Value *
 
 out:;
     return status;
+}
+
+static Julie_Status julie_builtin_mod_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_mod_assign(interp, expr, n_values, values, result, 0);
+}
+
+static Julie_Status julie_builtin_mod_assign_safe(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_mod_assign(interp, expr, n_values, values, result, 1);
 }
 
 static Julie_Status julie_builtin_bit_not(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
@@ -10454,10 +10498,21 @@ static Julie_Status julie_builtin_eval_sandboxed(Julie_Interp *interp, Julie_Val
         }
     }
 
-    sandbox = julie_init_interp();
+    sandbox = julie_init_sandboxed_interp();
 
     memset(&sandbox->sandbox_error_info, 0, sizeof(sandbox->sandbox_error_info));
 
+    if (interp->output_callback != NULL) {
+        julie_set_output_callback(sandbox, interp->output_callback);
+    }
+#ifdef JULIE_ENABLE_EVAL_CALLBACKS
+    if (interp->eval_callback != NULL) {
+        julie_set_eval_callback(sandbox, interp->eval_callback);
+    }
+    if (interp->post_eval_callback != NULL) {
+        julie_set_post_eval_callback(sandbox, interp->post_eval_callback);
+    }
+#endif
     julie_set_error_callback(sandbox, julie_sandbox_error_handler);
 
     julie_set_cur_file(sandbox, julie_get_string_id(interp, "<eval-sandboxed>"));
@@ -11136,7 +11191,7 @@ static Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_V
 
 #ifdef JULIE_ENABLE_EVAL_CALLBACKS
     if (interp->eval_callback != NULL) {
-        status = interp->eval_callback(value);
+        status = interp->eval_callback(interp, value);
         if (status != JULIE_SUCCESS) {
             julie_make_interp_error(interp, value, status);
             goto out;
@@ -11189,7 +11244,7 @@ out:;
 
 #ifdef JULIE_ENABLE_EVAL_CALLBACKS
     if (interp->post_eval_callback != NULL && status == JULIE_SUCCESS) {
-        status = interp->post_eval_callback(status, orig_value, result);
+        status = interp->post_eval_callback(interp, status, orig_value, result);
         if (status != JULIE_SUCCESS) {
             julie_make_interp_error(interp, orig_value, status);
             goto out;
@@ -11354,11 +11409,13 @@ out:;
 }
 
 
-Julie_Interp *julie_init_interp(void) {
+static Julie_Interp *_julie_init_interp(int sandboxed) {
     Julie_Interp *interp;
     int           i;
 
-    srandom(time(NULL));
+    if (!sandboxed) {
+        srandom(time(NULL));
+    }
 
     posix_memalign((void**)&interp, 64, sizeof(*interp));
 
@@ -11435,9 +11492,13 @@ Julie_Interp *julie_init_interp(void) {
     JULIE_BIND_INFIX_FN("*",                     julie_builtin_mul);
     JULIE_BIND_INFIX_FN("*=",                    julie_builtin_mul_assign);
     JULIE_BIND_INFIX_FN("/",                     julie_builtin_div);
+    JULIE_BIND_INFIX_FN("/?",                    julie_builtin_div_safe);
     JULIE_BIND_INFIX_FN("/=",                    julie_builtin_div_assign);
+    JULIE_BIND_INFIX_FN("/?=",                   julie_builtin_div_assign_safe);
     JULIE_BIND_INFIX_FN("%",                     julie_builtin_mod);
+    JULIE_BIND_INFIX_FN("%?",                    julie_builtin_mod_safe);
     JULIE_BIND_INFIX_FN("%=",                    julie_builtin_mod_assign);
+    JULIE_BIND_INFIX_FN("%?=",                   julie_builtin_mod_assign_safe);
 
     JULIE_BIND_FN(      "~",                     julie_builtin_bit_not);
     JULIE_BIND_INFIX_FN("&",                     julie_builtin_bit_and);
@@ -11555,6 +11616,14 @@ Julie_Interp *julie_init_interp(void) {
     JULIE_BIND_FN(      "abs",                   julie_builtin_abs);
 
     return interp;
+}
+
+Julie_Interp *julie_init_interp(void) {
+    return _julie_init_interp(0);
+}
+
+Julie_Interp *julie_init_sandboxed_interp(void) {
+    return _julie_init_interp(1);
 }
 
 Julie_Status julie_interp(Julie_Interp *interp) {

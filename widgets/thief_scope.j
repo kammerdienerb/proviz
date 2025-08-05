@@ -129,7 +129,7 @@ define-class Thief-Scope
                 row = (map 'blip-row)
                 foreach &leaf (map 'leaves)
                     count = ((&interval 'count-by-leaf) &leaf)
-                    value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
+                    value = ((float count) /? largest-count)
                     color = (select (value == 0.0) 0x000000 ((sint ((value * 225) + 30)) << 16))
 
                     append (map 'blips)
