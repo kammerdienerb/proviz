@@ -321,8 +321,12 @@ const char *julie_type_string(Julie_Type type);
 #include <unistd.h>
 #include <fcntl.h>
 #include <dlfcn.h>
-#include <regex.h>
 #include <time.h>
+#ifdef JULIE_USE_PCRE2
+#include <pcre2posix.h>
+#else
+#include <regex.h>
+#endif
 
 #define ALIGN_UP(x, align)   ((__typeof(x))((((unsigned long long)(x)) + ((unsigned long long)align)) & ~(((unsigned long long)align) - 1ull)))
 #define ALIGN_DOWN(x, align) ((__typeof(x))(((unsigned long long)(x)) & ~(((unsigned long long)align) - 1ull)))

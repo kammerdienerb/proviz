@@ -14,10 +14,17 @@ for f in $(find . -name "*.j"); do
     xxd -n "${dir}_${base}_j" -i ${f} > ${f}.h || exit $?
 done
 
-# ASAN="-fsanitize=address"
-# CFLAGS="-Wall -Werror -pedantic -Wno-gnu-zero-variadic-macro-arguments -g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O0 ${ASAN}"
-CFLAGS="-g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O3 -march=native -mtune=native -DJULIE_ASSERTIONS=0"
+PCRE2_CFLAGS=""
+PCRE2_LDFLAGS=""
+if which pcre2-config > /dev/null && ! [[ $(pcre2-config --version) < "10.36" ]]; then
+    PCRE2_CFLAGS="$(pcre2-config --cflags-posix) -DJULIE_USE_PCRE2"
+    PCRE2_LDFLAGS="$(pcre2-config --libs-posix)"
+fi
 
-LDFLAGS="-lm -ldl"
+# ASAN="-fsanitize=address"
+# CFLAGS="-Wall -Werror -pedantic -Wno-gnu-zero-variadic-macro-arguments -g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O0 ${ASAN} ${PCRE2_CFLAGS}"
+CFLAGS="-g -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O3 -march=native -mtune=native -DJULIE_ASSERTIONS=0 ${PCRE2_CFLAGS}"
+
+LDFLAGS="-lm -ldl ${PCRE2_LDFLAGS}"
 
 gcc -o proviz proviz.c ${CFLAGS} ${LDFLAGS}

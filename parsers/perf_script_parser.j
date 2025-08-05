@@ -69,7 +69,7 @@ parse-perf-script =
 
                         addr-field = (event-field + 1)
                         if ((addr-field < line-len) and ((parse-hex (split-line addr-field)) != nil))
-                            rest    = (move (last (split &line ":")))
+                            rest    = (move (last (split &line ": ")))
                             matches = (rest =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
                             sym     = (move (matches 2))
 
