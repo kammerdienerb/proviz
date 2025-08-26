@@ -68,6 +68,8 @@ usage =
                     (options-def option) 0
                     select (((options-def option) 1) == nil) "" (fmt "(default: %)" ((options-def option) 1))
                     (options-def option) 2
+        u =
+            fmt "%  --help\n    Show this help.\n\n" u
         u
 
 parse-cmdline-options =
