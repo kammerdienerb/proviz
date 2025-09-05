@@ -67,14 +67,28 @@ parse-perf-script =
                             else
                                 cmd-name = (fmt "% %" cmd-name (move (split-line i)))
 
-                        addr-field = (event-field + 1)
-                        if ((addr-field < line-len) and ((parse-hex (split-line addr-field)) != nil))
-                            rest    = (move (last (split &line ": ")))
-                            matches = (rest =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
-                            sym     = (move (matches 2))
 
-                            if (startswith sym "[unknown]")
-                                sym = (fmt "0x%%" (matches 1) (substr sym 9 -9))
+                        stack = ""
+
+                        # If the next line starts with a tab, we have stacks.
+                        if ((ln < (length - 1)) and (startswith (lines (ln + 1)) "\t"))
+                            want-stack = 1
+                        else
+                            addr-field = (event-field + 1)
+                            if
+                                and
+                                    addr-field < line-len
+                                    not (endswith (split-line addr-field) ":")
+                                    (parse-hex (split-line addr-field)) != nil
+
+                                rest    = (move (last (splits &line ": ")))
+                                matches = (rest =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
+                                sym     = (move (matches 2))
+
+                                if (startswith sym "[unknown]")
+                                    sym = (fmt "0x%%" (matches 1) (substr sym 9 -9))
+                            else
+                                sym = event
 
                             stack = (fmt "%;%;%" cmd-name pid sym)
                             &profile @
@@ -85,9 +99,6 @@ parse-perf-script =
                                         'time  : time
                                         'stack : (&profile @ ('string-id stack))
                             want-stack = 0
-                        else
-                            stack = ""
-                            want-stack = 1
 
                     elif want-stack
                         matches = (&line =~ "[[:space:]]*([^[:space:]]+)[[:space:]]+([^+]+)")
