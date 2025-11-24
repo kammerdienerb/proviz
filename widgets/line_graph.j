@@ -49,9 +49,11 @@ define-class Line-Graph
                 if (&event in (&interval 'event-accum-by-type))
                     largest-count = (max largest-count ((&interval 'event-accum-by-type) &event))
 
+            printf "%: %\n" &event largest-count
+
             foreach &interval (&profile 'intervals)
                 count = (select (&event in (&interval 'event-accum-by-type)) ((&interval 'event-accum-by-type) &event) 0)
-                value = (select (largest-count == 0) 0.0 ((float count) / largest-count))
+                value = ((float count) /? largest-count)
                 append (graph 'points)
                     object ('count : count) ('value : value)
 
@@ -59,7 +61,7 @@ define-class Line-Graph
             (graph 'color) |= ((156 + ((rand) % 100)) << 8)
             (graph 'color) |= ((156 + ((rand) % 100)) << 16)
 
-            move graph
+            graph
 
     'get-braille-glyph :
         fn (&self &value &next-value)
@@ -150,14 +152,11 @@ define-class Line-Graph
             &a = (&self 'anchor-idx)
             &t = (&self 'tail-idx)
 
-            if (&t == nil)
-                range = (&a : 1)
-            else
-                range =
-                    select (&a <= &t)
-                        &a : ((&t - &a) + 1)
-                        &t : ((&a - &t) + 1)
-            move range
+            select (&t == nil)
+                &a : 1
+                select (&a <= &t)
+                    &a : ((&t - &a) + 1)
+                    &t : ((&a - &t) + 1)
 
     'reset-selection :
         fn (&self &view)

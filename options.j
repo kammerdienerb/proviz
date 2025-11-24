@@ -10,6 +10,16 @@ options-def :=
                 "float"
                 10.0
                 "Throw an error when the time between two consecutive samples exceeds this value (seconds)."
+        'new-metric :
+            list
+                "string"
+                nil
+                "Create a new metric. String must be of the form 'METRIC-NAME = JULIE-EXPRESSION'. Valid event names in the profile can be referenced in the expression. May be repeated."
+        'metrics-file :
+            list
+                "string"
+                nil
+                "Path to a file containing Julie code used to define new metrics. The last expression must be an object that maps metric names to thier values."
 
 list-cmds :=
     list
@@ -24,12 +34,14 @@ foreach name options-def
     default-value = ((options-def name) 1)
     options <- (name : default-value)
 
-options <- ('FILES   : (list))
+options <- ('FILES               : (list))
+options <- ('METRICS             : (object))
+options <- ('METRICS-FILE-STRING : "")
 
 option-name-to-arg =
     fn (&option-name)
         s = (string &option-name)
-        s = (substr s 1 ((len s) - 1))
+        s = (substr s 1 -1)
         s = (fmt "--%" s)
         s
 
@@ -56,6 +68,8 @@ usage =
                     (options-def option) 0
                     select (((options-def option) 1) == nil) "" (fmt "(default: %)" ((options-def option) 1))
                     (options-def option) 2
+        u =
+            fmt "%  --help\n    Show this help.\n\n" u
         u
 
 parse-cmdline-options =
@@ -106,7 +120,32 @@ parse-cmdline-options =
                             die "bad float value '%' for arg %\n\n%" value arg (usage)
                         value = f
 
-                (options option) = value
+                if (option == 'new-metric)
+                    matches = (value =~ "[[:space:]]*([^[:space:]()]+)[[:space:]]*=[[:space:]]*(.*)")
+                    if (matches == nil)
+                        die "invalid new-metric string '%'\n\n%" value (usage)
+
+                    (options 'METRICS) <- ((matches 1) : (matches 2))
+
+                elif (option == 'metrics-file)
+                    (options option) = value
+
+                    f = (fopen-rd value)
+                    if (f == nil)
+                        die "unable to open metrics-file '%'" value
+
+                    s = ""
+                    delim = ""
+                    foreach &line (fread-lines f)
+                        s = (fmt "%%%" (move s) delim (move &line))
+                        delim = "\n"
+
+                    fclose f
+
+                    (options 'METRICS-FILE-STRING) = (move s)
+
+                else
+                    (options option) = value
 
             elif got-cmd
                 parts = (split arg ",")
@@ -114,9 +153,11 @@ parse-cmdline-options =
                 if ((len parts) == 1)
                     path   = arg
                     format = "auto-detect"
+
                 elif ((len parts) == 2)
                     path   = (parts 0)
                     format = (parts 1)
+
                 else
                     die "invalid argument '%'\n\n%" arg (usage)
 
