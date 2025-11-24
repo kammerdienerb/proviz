@@ -12,14 +12,10 @@ define-class Flame-Graph-Frame
     'new :
         fn (label)
             frame = (new-instance Flame-Graph-Frame)
-
+            
             type = 'unknown
 
-            if (startswith label "py::")
-                type = 'python
-            elif (contains label "::")
-                type = 'cpp
-            elif (endswith label "_[k]")
+            if (endswith label "_[k]")
                 type = 'kernel
                 label = (substr label 0 ((len label) - 4))
             elif (endswith label "_[g]")
@@ -28,6 +24,10 @@ define-class Flame-Graph-Frame
             elif (endswith label "_[G]")
                 type = 'gpu-symbol
                 label = (substr label 0 ((len label) - 4))
+            elif (startswith label "py::")
+                type = 'python
+            elif (contains label "::")
+                type = 'cpp
             elif (label == "-")
                 type = 'divider
 
@@ -194,7 +194,7 @@ define-class Flame-Graph
                             (get-or-insert counts (&sample 'stack) 0) += (&sample 'count)
 
             foreach stack-id counts
-                flame-stack = (splits (&profile @ ('get-string stack-id)) ";")
+                flame-stack = (split (&profile @ ('get-string stack-id)) ";")
                 &base @ ('add-flame flame-stack (counts stack-id))
 
             flame @ ('sort)
@@ -210,7 +210,7 @@ define-class Flame-Graph
         fn (&self &view &row &col &color)
             &cur-frame = (&self 'base)
 
-            foreach zframe (splits (&self 'zoom-stack) ";")
+            foreach zframe (split (&self 'zoom-stack) ";")
                 if (zframe in (&cur-frame 'children))
                     &new-cur-frame = ((&cur-frame 'children) zframe)
                     unref &cur-frame
@@ -261,7 +261,7 @@ define-class Flame-Graph
 
             &base = (&self 'base)
 
-            foreach zframe (splits (&self 'zoom-stack) ";")
+            foreach zframe (split (&self 'zoom-stack) ";")
                 if (zframe in (&base 'children))
                     &new-base = ((&base 'children) zframe)
                     unref &base
@@ -289,7 +289,7 @@ define-class Flame-Graph
         fn (&self &view &row &col)
             &cur-frame = (&self 'base)
 
-            foreach zframe (splits (&self 'zoom-stack) ";")
+            foreach zframe (split (&self 'zoom-stack) ";")
                 if (zframe in (&cur-frame 'children))
                     &new-cur-frame = ((&cur-frame 'children) zframe)
                     unref &cur-frame
