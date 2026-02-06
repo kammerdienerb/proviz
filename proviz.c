@@ -16,6 +16,7 @@
 #include "parsers.j.h"
 #include "options.j.h"
 #include "profile.j.h"
+#include "parsers/tsv_parser.j.h"
 #include "parsers/iaprof_parser.j.h"
 #include "parsers/perf_script_parser.j.h"
 #include "widgets/report_menu.j.h"
@@ -292,6 +293,7 @@ int main(int argc, char **argv) {
     LOAD_J(parsers);
     LOAD_J(options);
     LOAD_J(profile);
+    LOAD_J(tsv_parser, parsers);
     LOAD_J(iaprof_parser, parsers);
     LOAD_J(perf_script_parser, parsers);
     LOAD_J(view);
