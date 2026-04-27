@@ -8,6 +8,8 @@ parse-iaprof =
         stall-reasons        = (list "active" "control" "pipestall" "send" "dist_acc" "sbid" "sync" "inst_fetch" "other" "tdr")
         current-kernel-stack = ""
 
+        (&profile 'default-event) = "iaprof:EU-stall"
+
         string-map <- ("0" : "<unknown>")
 
         foreach &line lines
