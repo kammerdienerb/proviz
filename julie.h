@@ -562,7 +562,6 @@ struct Julie_Value_Struct {
 #include <dlfcn.h>
 #include <time.h>
 #include <pthread.h>
-#include <signal.h>
 #ifdef JULIE_USE_PCRE2
 #include <pcre2posix.h>
 #else
@@ -1593,28 +1592,28 @@ struct Julie_Interp_Struct {
     hash_table(Julie_String_ID, regex_t)   compiled_regex;
 };
 
-// static Julie_Value *julie_new_value(Julie_Interp *interp) {
-//     Julie_Value *val = interp->value_free_list;
+static Julie_Value *julie_new_value(Julie_Interp *interp) {
+    Julie_Value *val = interp->value_free_list;
 
-//     if (likely(val != NULL)) {
-//         interp->value_free_list = val->free_list_next;
-//     } else {
-//         val = malloc(sizeof(Julie_Value));
-//     }
+    if (likely(val != NULL)) {
+        interp->value_free_list = val->free_list_next;
+    } else {
+        val = malloc(sizeof(Julie_Value));
+    }
 
-//     return val;
-// }
+    return val;
+}
 
-// static void julie_del_value(Julie_Interp *interp, Julie_Value *value) {
-//     value->free_list_next   = interp->value_free_list;
-//     interp->value_free_list = value;
-// }
+static void julie_del_value(Julie_Interp *interp, Julie_Value *value) {
+    value->free_list_next   = interp->value_free_list;
+    interp->value_free_list = value;
+}
 
-// #define JULIE_NEW(_interp)         (julie_new_value((_interp)))
-// #define JULIE_DEL(_interp, _value) (julie_del_value((_interp), (_value)))
+#define JULIE_NEW(_interp)         (julie_new_value((_interp)))
+#define JULIE_DEL(_interp, _value) (julie_del_value((_interp), (_value)))
 
-#define JULIE_NEW(_interp)         (malloc(sizeof(Julie_Value)))
-#define JULIE_DEL(_interp, _value) (free((_value)))
+// #define JULIE_NEW(_interp)         (malloc(sizeof(Julie_Value)))
+// #define JULIE_DEL(_interp, _value) (free((_value)))
 
 
 static Julie_Apply_Context *julie_push_cxt(Julie_Interp *interp, Julie_Value *value) {
