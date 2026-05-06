@@ -90,14 +90,14 @@ define-class Report-Menu
 
                 (&self 'selected-idx) = (&row - 2)
                 &self @ ('paint &view 0 0)
-                @term:flush
+                (@term:flush)
 
             else
                 had-selection = ((&self 'selected-idx) != nil)
                 (&self 'selected-idx) = nil
                 if had-selection
                     &self @ ('paint &view 0 0)
-                    @term:flush
+                    (@term:flush)
 
             response
 

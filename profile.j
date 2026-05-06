@@ -84,33 +84,39 @@ define-class Profile
 
     'compute-user-metric-expression :
         fn (&self &interval &type &metric-name &formula &bindings)
-            result = (eval-sandboxed &formula &bindings)
-            value  = (result 0)
+            code = (parse-julie &formula)
+            if ((typeof code) == "error")
+                die "invalid syntax in % expression: %"
+                    select (&type == 'metrics-file) "metrics-file" "new-metric"
+                    (((error-field code '__message__) =~ "error: (.*)") 1)
+
+            config = (object ('bindings : &bindings))
+
+            result = (eval-sandboxed code config)
+            if ((typeof result) == "error")
+                die "problem computing % expression: %"
+                    select (&type == 'metrics-file) "metrics-file" "new-metric"
+                    (((error-field result '__message__) =~ "error: (.*)") 1)
 
             valid-value-types = (list "signed integer" "unsigned integer" "float")
             type-error-string = "???"
-
-            if (((result 1) 'status) != 0)
-                die "problem computing % expression\n%"
-                    select (&type == 'metrics-file) "metrics-file" "new-metric"
-                    ((result 1) 'error-message)
 
             new-metrics = (object)
 
             if (&type == 'cmd-line)
                 type-error-string = "new-metric"
-                new-metrics <- (&metric-name : value)
+                new-metrics <- (&metric-name : result)
 
             elif (&type == 'metrics-file)
                 type-error-string = "metrics-file"
 
-                if ((typeof value) != "object")
-                    die "metrics-file did not produce an object, got %" (typeof value)
+                if ((typeof result) != "object")
+                    die "metrics-file did not produce an object, got %" (typeof result)
 
-                foreach user-metric value
+                foreach user-metric result
                     if ((typeof user-metric) != "string")
                         die "object key '%' from metrics-file is not a valid metric name" user-metric
-                    new-metrics <- (user-metric : (value user-metric))
+                    new-metrics <- (user-metric : (result user-metric))
 
 
             foreach user-metric new-metrics
@@ -135,15 +141,16 @@ define-class Profile
 
                 ++ (get-or-insert (&self 'event-count-by-type) user-metric 0)
 
-                unref &value
+                unbind &value
 
     'compute-user-metrics :
-        fn (&self &interval)
+        fn (&self &interval &interval-number)
             bindings = (object)
             foreach event (&self 'event-count-by-type)
                 bindings <- ((symbol event) : 0.0)
             foreach event (&interval 'event-accum-by-type)
                 bindings <- ((symbol event) : (float ((&interval 'event-accum-by-type) event)))
+            bindings <- ((symbol "INTERVAL") : &interval-number)
 
             if ((options 'metrics-file) != nil)
                 &formula = (options 'METRICS-FILE-STRING)
@@ -192,7 +199,7 @@ define-class Profile
 
                     cur-time += (&interval-time * num-elapsed)
 
-                    unref &cur-interval
+                    unbind &cur-interval
                     &cur-interval = (last (&self 'intervals))
 
                 &cur-interval @ ('push-sample &sample)
@@ -221,7 +228,7 @@ define-class Profile
 
             foreach &interval (&self 'intervals)
                 &interval @ ('accum)
-                &self @ ('compute-user-metrics &interval)
+                &self @ ('compute-user-metrics &interval (ln + 1))
 
                 if (((++ ln) % update) == 0)
                     &view @ ('loading-bar-update ((float ln) / length))

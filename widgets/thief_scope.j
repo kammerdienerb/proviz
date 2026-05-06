@@ -167,7 +167,7 @@ define-class Thief-Scope
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) |= &mask
                 &blip @ ('paint &view (&self 'blip-row))
-                unref &blip
+                unbind &blip
 
     'reset-col-color :
         fn (&self &view &col)
@@ -176,7 +176,7 @@ define-class Thief-Scope
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) &= 0xff0000
                 &blip @ ('paint &view (&self 'blip-row))
-                unref &blip
+                unbind &blip
 
     'set-row-color-mask :
         fn (&self &view &row &mask)
@@ -185,7 +185,7 @@ define-class Thief-Scope
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) |= &mask
                 &blip @ ('paint &view (&self 'blip-row))
-                unref &blip
+                unbind &blip
 
     'reset-row-color :
         fn (&self &view &row)
@@ -194,7 +194,7 @@ define-class Thief-Scope
                 &blip = ((&self 'blips) idx)
                 (&blip 'color) &= 0xff0000
                 &blip @ ('paint &view (&self 'blip-row))
-                unref &blip
+                unbind &blip
 
     'get-selected-range :
         fn (&self)
@@ -291,7 +291,7 @@ define-class Thief-Scope
                     @term:set-cell-char (&self 'text-row) c char
                     c += 1
 
-                @term:flush
+                (@term:flush)
             response
 
     'mouse-click :
@@ -319,5 +319,5 @@ define-class Thief-Scope
                             (&self 'tail-col) = &col
                             response = 'range-selected
 
-                    @term:flush
+                    (@term:flush)
             response

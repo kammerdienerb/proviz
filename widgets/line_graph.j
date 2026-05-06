@@ -127,9 +127,9 @@ define-class Line-Graph
                     @term:set-cell-char r c glyph
                     @term:set-cell-fg   r c (&self 'color)
 
-                    unref &point
+                    unbind &point
                     if (is-bound &next-point)
-                        unref &next-point
+                        unbind &next-point
 
                     ++ c
 
@@ -280,7 +280,7 @@ define-class Line-Graph
 
                             response = 'range-hover
 
-                    @term:flush
+                    (@term:flush)
             response
 
     'mouse-click :
@@ -329,5 +329,5 @@ define-class Line-Graph
                             (&self 'tail-idx) = idx
                             response = 'range-selected
 
-                    @term:flush
+                    (@term:flush)
             response

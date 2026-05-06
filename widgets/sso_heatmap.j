@@ -71,7 +71,7 @@ define-class SSO-Heatmap
                 else
                     -- row-off
 
-            unref &grid-height
+            unbind &grid-height
             map
 
     'paint :
@@ -238,7 +238,7 @@ define-class SSO-Heatmap
 
                             response = 'range-hover
 
-                    @term:flush
+                    (@term:flush)
             response
 
     'mouse-click :
@@ -287,5 +287,5 @@ define-class SSO-Heatmap
                             (&self 'tail-idx) = idx
                             response = 'range-selected
 
-                    @term:flush
+                    (@term:flush)
             response

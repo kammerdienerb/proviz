@@ -30,7 +30,11 @@
     _JULIE_STATUS_X(JULIE_ERR_MUST_FOLLOW_IF,                  "This special-form function must follow `if` or `elif`.")                        \
     _JULIE_STATUS_X(JULIE_ERR_REST_MUST_BE_LAST,               "'...' may only be specified at the end of a parameter list.")                   \
     _JULIE_STATUS_X(JULIE_ERR_REGEX,                           "Regex error.")                                                                  \
-    _JULIE_STATUS_X(JULIE_ERR_NO_EVAL_CALLBACKS,               "Eval callbacks are not enabled. Define JULIE_ENABLE_EVAL_CALLBACKS to enable.")
+    _JULIE_STATUS_X(JULIE_ERR_NO_EVAL_CALLBACKS,               "Eval callbacks are not enabled. Define JULIE_ENABLE_EVAL_CALLBACKS to enable.") \
+    _JULIE_STATUS_X(JULIE_ERR_ERROR_VALUE,                     "Error value thrown.")                                                           \
+    _JULIE_STATUS_X(JULIE_ERR_ACTOR_DEAD,                      "Actor is no longer alive.")                                                     \
+    _JULIE_STATUS_X(JULIE_ERR_ACTOR_JOIN,                      "Actor join failed.")                                                            \
+    _JULIE_STATUS_X(JULIE_ERR_NO_MAILBOX,                      "No mailbox available in this context.")
 
 #define _JULIE_STATUS_X(e, s) e,
 typedef enum { _JULIE_STATUS } Julie_Status;
@@ -49,6 +53,8 @@ typedef enum { _JULIE_STATUS } Julie_Status;
     _JULIE_TYPE_X(JULIE_FN,                "function")                                 \
     _JULIE_TYPE_X(JULIE_BUILTIN_FN,        "function")                                 \
     _JULIE_TYPE_X(JULIE_LAMBDA,            "lambda")                                   \
+    _JULIE_TYPE_X(JULIE_ERROR,             "error")                                    \
+    _JULIE_TYPE_X(JULIE_ACTOR,             "actor")                                    \
     _JULIE_TYPE_X(_JULIE_INTEGER,          "integer")                                  \
     _JULIE_TYPE_X(_JULIE_NUMBER,           "number")                                   \
     _JULIE_TYPE_X(_JULIE_LIST_OR_OBJECT,   "list or object")                           \
@@ -94,6 +100,8 @@ typedef struct Julie_Value_Struct         Julie_Value;
 typedef struct Julie_String_Struct        Julie_String;
 typedef        Julie_String              *Julie_String_ID;
 typedef struct Julie_Closure_Info_Struct  Julie_Closure_Info;
+typedef struct Julie_Mailbox_Struct       Julie_Mailbox;
+typedef struct Julie_Actor_Struct         Julie_Actor;
 
 struct Julie_Backtrace_Entry_Struct {
     Julie_Value        *fn;
@@ -103,10 +111,14 @@ struct Julie_Backtrace_Entry_Struct {
 };
 
 typedef struct Julie_Source_Value_Info_Struct {
-    Julie_String_ID    file_id;
-    unsigned long long line;
-    unsigned long long col;
-    unsigned long long ind;
+    union {
+        char            *file_name; /* when on a detached value */
+        Julie_String_ID  file_id;
+    };
+    unsigned long long   line;
+    unsigned long long   col;
+    unsigned long long   ind;
+    int                  paren;
 } Julie_Source_Value_Info;
 
 typedef struct Julie_Backtrace_Entry_Struct Julie_Backtrace_Entry;
@@ -174,6 +186,10 @@ struct Julie_Regex_Error_Info_Struct {
     char *regex_error_message;
 };
 
+struct Julie_Thrown_Error_Info_Struct {
+    Julie_Value *error_value;
+};
+
 typedef struct Julie_Lookup_Error_Info_Struct Julie_Lookup_Error_Info;
 typedef struct Julie_Release_While_Borrowed_Error_Info_Struct Julie_Release_While_Borrowed_Error_Info;
 typedef struct Julie_Ref_Of_Transient_Error_Info_Struct Julie_Ref_Of_Transient_Error_Info;
@@ -187,6 +203,7 @@ typedef struct Julie_Bad_Index_Error_Info_Struct Julie_Bad_Index_Error_Info;
 typedef struct Julie_File_Error_Info_Struct Julie_File_Error_Info;
 typedef struct Julie_Load_Package_Failure_Error_Info_Struct Julie_Load_Package_Failure_Error_Info;
 typedef struct Julie_Regex_Error_Info_Struct Julie_Regex_Error_Info;
+typedef struct Julie_Thrown_Error_Info_Struct Julie_Thrown_Error_Info;
 
 struct Julie_Error_Info_Struct {
     Julie_Interp       *interp;
@@ -209,6 +226,7 @@ struct Julie_Error_Info_Struct {
         Julie_File_Error_Info                   file;
         Julie_Load_Package_Failure_Error_Info   load_package_failure;
         Julie_Regex_Error_Info                  regex;
+        Julie_Thrown_Error_Info                 thrown;
     };
 };
 
@@ -216,7 +234,7 @@ typedef struct Julie_Error_Info_Struct Julie_Error_Info;
 
 typedef void (*Julie_Error_Callback)(Julie_Error_Info *info);
 typedef void (*Julie_Output_Callback)(const char*, int);
-typedef Julie_Status (*Julie_Eval_Callback)(Julie_Interp *interp, Julie_Value *value);
+typedef Julie_Status (*Julie_Eval_Callback)(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
 typedef Julie_Status (*Julie_Post_Eval_Callback)(Julie_Interp *interp, Julie_Status status, Julie_Value *value, Julie_Value **result);
 typedef Julie_Status (*Julie_Fn)(Julie_Interp*, Julie_Value*, unsigned, Julie_Value**, Julie_Value**);
 
@@ -231,11 +249,13 @@ Julie_Status julie_set_cur_file(Julie_Interp *interp, Julie_String_ID id);
 Julie_Status julie_load_package(Julie_Interp *interp, const char *name, Julie_Value **result);
 Julie_Status julie_add_package_directory(Julie_Interp *interp, const char *path);
 Julie_Status julie_parse(Julie_Interp *interp, const char *str, int size);
+Julie_Status julie_parse_roots(Julie_Interp *interp, Julie_Array **rootsp, const char *str, int size, unsigned long long *err_line, unsigned long long *err_col, int temporary);
 Julie_Status julie_interp(Julie_Interp *interp);
+Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
 void julie_free(Julie_Interp *interp);
 
 
-
+char *julie_get_pretty_error_string(Julie_Error_Info *info, const char *blue, const char *red, const char *normal);
 void julie_free_error_info(Julie_Error_Info *info);
 void julie_make_parse_error(Julie_Interp *interp, unsigned long long line, unsigned long long col, Julie_Status status);
 void julie_make_interp_error(Julie_Interp *interp, Julie_Value *expr, Julie_Status status);
@@ -249,10 +269,12 @@ void julie_make_must_follow_if_error(Julie_Interp *interp, Julie_Value *expr);
 void julie_make_file_error(Julie_Interp *interp, Julie_Value *expr, Julie_Status status, const char *path);
 void julie_make_load_package_error(Julie_Interp *interp, Julie_Value *expr, Julie_Status status, const char *path, const char *message);
 void julie_make_regex_error(Julie_Interp *interp, Julie_Value *expr, const char *message);
+void julie_make_runtime_error(Julie_Interp *interp, Julie_Value *expr, Julie_Value *error_value);
 Julie_Backtrace_Entry *julie_bt_entry(Julie_Interp *interp, unsigned long long depth);
 Julie_Source_Value_Info *julie_get_source_value_info(Julie_Value *value);
 Julie_Source_Value_Info *julie_get_top_source_value_info(Julie_Interp *interp);
 
+Julie_Value *julie_error_value(Julie_Interp *interp, const char *error_message);
 Julie_Value *julie_nil_value(Julie_Interp *interp);
 Julie_Value *julie_sint_value(Julie_Interp *interp, long long sint);
 Julie_Value *julie_uint_value(Julie_Interp *interp, unsigned long long uint);
@@ -274,6 +296,8 @@ Julie_Status julie_object_delete_field(Julie_Interp *interp, Julie_Value *object
 void julie_free_value(Julie_Interp *interp, Julie_Value *value);
 void julie_force_free_value(Julie_Interp *interp, Julie_Value *value);
 void julie_free_and_reuse_value(Julie_Interp *interp, Julie_Value *value);
+Julie_Value *julie_copy(Julie_Interp *interp, Julie_Value *value);
+Julie_Value *julie_force_copy(Julie_Interp *interp, Julie_Value *value);
 
 Julie_Status julie_bind(Julie_Interp *interp, const Julie_String_ID name, Julie_Value **valuep);
 Julie_Status julie_bind_local(Julie_Interp *interp, const Julie_String_ID name, Julie_Value **valuep);
@@ -296,33 +320,249 @@ Julie_Status julie_map_file_into_readonly_memory(const char *path, const char **
 const char *julie_error_string(Julie_Status error);
 const char *julie_type_string(Julie_Type type);
 
-#ifdef JULIE_IMPL
 
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifndef JULIE_ASSERTIONS
 #define JULIE_ASSERTIONS (1)
 #endif
-
 #if JULIE_ASSERTIONS
 #define JULIE_ASSERT(...) assert(__VA_ARGS__)
 #else
 #define JULIE_ASSERT(...)
 #endif
 
-#include <stdlib.h>
+#ifndef likely
+#define likely(x)   (__builtin_expect(!!(x), 1))
+#endif
+#ifndef unlikely
+#define unlikely(x) (__builtin_expect(!!(x), 0))
+#endif
+
+
+struct Julie_String_Struct {
+    char               *chars;
+    unsigned long long  len;
+    unsigned long long  hash;
+    unsigned            tag;
+};
+
+
+struct Julie_Array_Struct {
+    unsigned long long  len;
+    unsigned long long  cap;
+    void               *aux;
+    void               *data[];
+};
+
+#define JULIE_ARRAY_INIT        ((Julie_Array*)NULL)
+#define JULIE_ARRAY_INITIAL_CAP (16)
+
+static inline void julie_array_free(Julie_Array *array) {
+    if (array != NULL) { free(array); }
+}
+
+static inline unsigned long long julie_array_len(Julie_Array *array) {
+    return array == NULL ? 0 : array->len;
+}
+
+static inline Julie_Array *julie_array_reserve(Julie_Array *array, unsigned long long cap) {
+    if (cap == 0) { return array; }
+
+    if (cap < JULIE_ARRAY_INITIAL_CAP) {
+        cap = JULIE_ARRAY_INITIAL_CAP;
+    }
+
+    if (array == NULL) {
+        array = (Julie_Array*)malloc(sizeof(Julie_Array) + (cap * sizeof(void*)));
+        array->len = 0;
+        array->cap = cap;
+        array->aux = NULL;
+        return array;
+    }
+
+    if (array->cap >= cap) { return array; }
+
+    array->cap = cap;
+    array      = (Julie_Array*)realloc(array, sizeof(Julie_Array) + (array->cap * sizeof(void*)));
+
+    return array;
+}
+
+static inline Julie_Array *julie_array_set_aux(Julie_Array *array, void *aux) {
+    if (array == NULL) {
+        array = (Julie_Array*)malloc(sizeof(Julie_Array) + (JULIE_ARRAY_INITIAL_CAP * sizeof(void*)));
+        array->len = 0;
+        array->cap = JULIE_ARRAY_INITIAL_CAP;
+    }
+    array->aux = aux;
+    return array;
+}
+
+static inline void *julie_array_get_aux(Julie_Array *array) {
+    return array == NULL ? NULL : array->aux;
+}
+
+static inline Julie_Array *julie_array_push(Julie_Array *array, void *item) {
+    if (unlikely(array == NULL)) {
+        array = (Julie_Array*)malloc(sizeof(Julie_Array) + (JULIE_ARRAY_INITIAL_CAP * sizeof(void*)));
+        array->len = 0;
+        array->cap = JULIE_ARRAY_INITIAL_CAP;
+        array->aux = NULL;
+        goto push;
+    }
+
+    if (unlikely(array->len >= array->cap)) {
+        array->cap += ((array->cap >> 1) > 0) ? (array->cap >> 1) : 1;
+        array       = (Julie_Array*)realloc(array, sizeof(Julie_Array) + (array->cap * sizeof(void*)));
+    }
+
+push:;
+    array->data[array->len] = item;
+    array->len += 1;
+
+    return array;
+}
+
+static inline Julie_Array *julie_array_insert(Julie_Array *array, void *item, unsigned long long idx) {
+    if (unlikely(array == NULL)) {
+        array = (Julie_Array*)malloc(sizeof(Julie_Array) + (JULIE_ARRAY_INITIAL_CAP * sizeof(void*)));
+        array->len = 0;
+        array->cap = JULIE_ARRAY_INITIAL_CAP;
+        array->aux = NULL;
+        goto push;
+    }
+
+    if (unlikely(array->len >= array->cap)) {
+        array->cap += ((array->cap >> 1) > 0) ? (array->cap >> 1) : 1;
+        array       = (Julie_Array*)realloc(array, sizeof(Julie_Array) + (array->cap * sizeof(void*)));
+    }
+
+push:;
+    JULIE_ASSERT(idx <= array->cap);
+
+    memmove(array->data + idx + 1, array->data + idx, (array->len - idx) * sizeof(void*));
+
+    array->data[idx] = item;
+    array->len += 1;
+
+    return array;
+}
+
+static inline void *julie_array_elem(Julie_Array *array, unsigned idx) {
+    JULIE_ASSERT(array != NULL && idx < array->len);
+    return array->data[idx];
+}
+
+static inline void *julie_array_top(Julie_Array *array) {
+    if (array == NULL || array->len == 0) {
+        return NULL;
+    }
+
+    return array->data[array->len - 1];
+}
+
+static inline void *julie_array_pop(Julie_Array *array) {
+    void *r;
+
+    r = NULL;
+
+    if (array != NULL && array->len > 0) {
+        r = julie_array_top(array);
+        array->len -= 1;
+    }
+
+    return r;
+}
+
+static inline void julie_array_erase(Julie_Array *array, unsigned idx) {
+    if (array == NULL || idx >= array->len) {
+        return;
+    }
+
+    memmove(array->data + idx, array->data + idx + 1, (array->len - idx - 1) * sizeof(void*));
+
+    array->len -= 1;
+}
+
+#define JULIE_ARRAY_RESERVE(_arrayp, _cap)       ((_arrayp) = julie_array_reserve((_arrayp), (_cap)))
+#define JULIE_ARRAY_PUSH(_arrayp, _item)         ((_arrayp) = julie_array_push((_arrayp), (_item)))
+#define JULIE_ARRAY_INSERT(_arrayp, _item, _idx) ((_arrayp) = julie_array_insert((_arrayp), (_item), (_idx)))
+#define JULIE_ARRAY_SET_AUX(_arrayp, _aux)       ((_arrayp) = julie_array_set_aux((_arrayp), (_aux)))
+
+#define ARRAY_FOR_EACH(_arrayp, _it)                                                                                \
+    for (unsigned long long _each_i = 0;                                                                            \
+         ((_arrayp) != NULL && _each_i < (_arrayp)->len && (((_it) = (__typeof(_it))(_arrayp)->data[_each_i]), 1)); \
+         _each_i += 1)
+
+
+enum {
+    JULIE_STRING_TYPE_EMBED = 0,
+    JULIE_STRING_TYPE_INTERN,
+    JULIE_STRING_TYPE_MALLOC,
+
+    JULIE_INFIX_FN,
+    JULIE_REARRANGED_INFIX_SOURCE_LIST,
+};
+
+#define JULIE_MAX_BC_POT (32ull)
+#define JULIE_EMBEDDED_STRING_MAX_SIZE (sizeof(unsigned long long))
+
+struct Julie_Value_Struct {
+    union {
+        struct {
+            union {
+                long long           sint;
+                unsigned long long  uint;
+                double              floating;
+                Julie_String_ID     string_id;
+                char               *cstring;
+                void               *object;
+                Julie_Array        *list;
+                Julie_Fn            builtin_fn;
+                Julie_Actor        *actor;
+
+                Julie_Value        *free_list_next;
+            };
+
+            unsigned char tag;
+            unsigned char source_node;
+            unsigned char type;
+            unsigned char owned;
+            unsigned int  borrow_count;
+        };
+        struct {
+            /* Last byte of embedded_string_bytes aliases with tag, which should be 0 when
+               tag == JULIE_STRING_TYPE_EMBED, giving us an extra byte and natural NULL
+               terminator. */
+            char          embedded_string_bytes[JULIE_EMBEDDED_STRING_MAX_SIZE + 1];
+            unsigned char _source_node;
+            unsigned char _type;
+            unsigned char _owned;
+            unsigned int  _borrow_count;
+        };
+    };
+};
+
+
+#ifdef JULIE_IMPL
+
 #include <stdio.h>
 #include <stdint.h>
-#include <string.h> /* strlen, memcpy, memset, memcmp */
 #include <stdarg.h>
 #include <alloca.h>
 #include <math.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <time.h>
+#include <pthread.h>
+#include <signal.h>
 #ifdef JULIE_USE_PCRE2
 #include <pcre2posix.h>
 #else
@@ -349,13 +589,6 @@ const char *julie_type_string(Julie_Type type);
     a = (void*)(((unsigned long long)(a)) ^ ((unsigned long long)(b))); \
 } while (0);
 
-#define likely(x)   (__builtin_expect(!!(x), 1))
-#define unlikely(x) (__builtin_expect(!!(x), 0))
-
-
-/*********************************************************
- *                    Data Structures                    *
- *********************************************************/
 
 #define hash_table_make(K_T, V_T, HASH) (CAT2(hash_table(K_T, V_T), _make)((HASH), NULL))
 #define hash_table_make_e(K_T, V_T, HASH, EQU) (CAT2(hash_table(K_T, V_T), _make)((HASH), (EQU)))
@@ -1154,160 +1387,6 @@ static _SORT_R_INLINE void sort_r_simple(void *base, size_t nel, size_t w,
 #undef _SORT_R_BSD
 
 
-struct Julie_Array_Struct {
-    unsigned long long  len;
-    unsigned long long  cap;
-    void               *aux;
-    void               *data[];
-};
-
-#define JULIE_ARRAY_INIT        ((Julie_Array*)NULL)
-#define JULIE_ARRAY_INITIAL_CAP (16)
-
-static void julie_array_free(Julie_Array *array) {
-    if (array != NULL) { free(array); }
-}
-
-static unsigned long long julie_array_len(Julie_Array *array) {
-    return array == NULL ? 0 : array->len;
-}
-
-static Julie_Array *julie_array_reserve(Julie_Array *array, unsigned long long cap) {
-    if (cap == 0) { return array; }
-
-    if (cap < JULIE_ARRAY_INITIAL_CAP) {
-        cap = JULIE_ARRAY_INITIAL_CAP;
-    }
-
-    if (array == NULL) {
-        array = malloc(sizeof(Julie_Array) + (cap * sizeof(void*)));
-        array->len = 0;
-        array->cap = cap;
-        array->aux = NULL;
-        return array;
-    }
-
-    if (array->cap >= cap) { return array; }
-
-    array->cap = cap;
-    array      = realloc(array, sizeof(Julie_Array) + (array->cap * sizeof(void*)));
-
-    return array;
-}
-
-static Julie_Array *julie_array_set_aux(Julie_Array *array, void *aux) {
-    if (array == NULL) {
-        array = malloc(sizeof(Julie_Array) + (JULIE_ARRAY_INITIAL_CAP * sizeof(void*)));
-        array->len = 0;
-        array->cap = JULIE_ARRAY_INITIAL_CAP;
-    }
-    array->aux = aux;
-    return array;
-}
-
-static void *julie_array_get_aux(Julie_Array *array) {
-    return array == NULL ? NULL : array->aux;
-}
-
-static Julie_Array *julie_array_push(Julie_Array *array, void *item) {
-    if (unlikely(array == NULL)) {
-        array = malloc(sizeof(Julie_Array) + (JULIE_ARRAY_INITIAL_CAP * sizeof(void*)));
-        array->len = 0;
-        array->cap = JULIE_ARRAY_INITIAL_CAP;
-        array->aux = NULL;
-        goto push;
-    }
-
-    if (unlikely(array->len >= array->cap)) {
-        array->cap += ((array->cap >> 1) > 0) ? (array->cap >> 1) : 1;
-        array       = realloc(array, sizeof(Julie_Array) + (array->cap * sizeof(void*)));
-    }
-
-push:;
-    array->data[array->len] = item;
-    array->len += 1;
-
-    return array;
-}
-
-static Julie_Array *julie_array_insert(Julie_Array *array, void *item, unsigned long long idx) {
-    if (unlikely(array == NULL)) {
-        array = malloc(sizeof(Julie_Array) + (JULIE_ARRAY_INITIAL_CAP * sizeof(void*)));
-        array->len = 0;
-        array->cap = JULIE_ARRAY_INITIAL_CAP;
-        array->aux = NULL;
-        goto push;
-    }
-
-    if (unlikely(array->len >= array->cap)) {
-        array->cap += ((array->cap >> 1) > 0) ? (array->cap >> 1) : 1;
-        array       = realloc(array, sizeof(Julie_Array) + (array->cap * sizeof(void*)));
-    }
-
-push:;
-    JULIE_ASSERT(idx <= array->cap);
-
-    memmove(array->data + idx + 1, array->data + idx, (array->len - idx) * sizeof(void*));
-
-    array->data[idx] = item;
-    array->len += 1;
-
-    return array;
-}
-
-static void *julie_array_elem(Julie_Array *array, unsigned idx) {
-    JULIE_ASSERT(array != NULL && idx < array->len);
-    return array->data[idx];
-}
-
-static void *julie_array_top(Julie_Array *array) {
-    if (array == NULL || array->len == 0) {
-        return NULL;
-    }
-
-    return array->data[array->len - 1];
-}
-
-static void *julie_array_pop(Julie_Array *array) {
-    void *r;
-
-    r = NULL;
-
-    if (array != NULL && array->len > 0) {
-        r = julie_array_top(array);
-        array->len -= 1;
-    }
-
-    return r;
-}
-
-static void julie_array_erase(Julie_Array *array, unsigned idx) {
-    if (array == NULL || idx >= array->len) {
-        return;
-    }
-
-    memmove(array->data + idx, array->data + idx + 1, (array->len - idx - 1) * sizeof(void*));
-
-    array->len -= 1;
-}
-
-#define JULIE_ARRAY_RESERVE(_arrayp, _cap)       ((_arrayp) = julie_array_reserve((_arrayp), (_cap)))
-#define JULIE_ARRAY_PUSH(_arrayp, _item)         ((_arrayp) = julie_array_push((_arrayp), (_item)))
-#define JULIE_ARRAY_INSERT(_arrayp, _item, _idx) ((_arrayp) = julie_array_insert((_arrayp), (_item), (_idx)))
-#define JULIE_ARRAY_SET_AUX(_arrayp, _aux)       ((_arrayp) = julie_array_set_aux((_arrayp), (_aux)))
-
-#define ARRAY_FOR_EACH(_arrayp, _it)                                                                 \
-    for (unsigned long long _each_i = 0;                                                             \
-         ((_arrayp) != NULL && _each_i < (_arrayp)->len && (((_it) = (_arrayp)->data[_each_i]), 1)); \
-         _each_i += 1)
-
-
-
-/*********************************************************
- *                         Core                          *
- *********************************************************/
-
-
 
 #define _JULIE_STATUS_X(e, s) s,
 const char *_julie_error_strings[] = { _JULIE_STATUS };
@@ -1324,53 +1403,6 @@ const char *_julie_type_strings[] = { _JULIE_TYPE };
 const char *julie_type_string(Julie_Type type) {
     return _julie_type_strings[type];
 }
-
-enum {
-    JULIE_STRING_TYPE_EMBED = 0,
-    JULIE_STRING_TYPE_INTERN,
-    JULIE_STRING_TYPE_MALLOC,
-
-    JULIE_INFIX_FN,
-    JULIE_REARRANGED_INFIX_SOURCE_LIST,
-};
-
-#define JULIE_MAX_BC_POT (32ull)
-#define JULIE_EMBEDDED_STRING_MAX_SIZE (sizeof(unsigned long long))
-
-struct Julie_Value_Struct {
-    union {
-        struct {
-            union {
-                long long           sint;
-                unsigned long long  uint;
-                double              floating;
-                Julie_String_ID     string_id;
-                char               *cstring;
-                void               *object;
-                Julie_Array        *list;
-                Julie_Fn            builtin_fn;
-
-                Julie_Value        *free_list_next;
-            };
-
-            unsigned char tag;
-            unsigned char source_node;
-            unsigned char type;
-            unsigned char owned;
-            unsigned int  borrow_count;
-        };
-        struct {
-            /* Last byte of embedded_string_bytes aliases with tag, which should be 0 when
-               tag == JULIE_STRING_TYPE_EMBED, giving us an extra byte and natural NULL
-               terminator. */
-            char          embedded_string_bytes[JULIE_EMBEDDED_STRING_MAX_SIZE + 1];
-            unsigned char _source_node;
-            unsigned char _type;
-            unsigned char _owned;
-            unsigned int  _borrow_count;
-        };
-    };
-};
 
 #define JULIE_BORROW(_val)                                                 \
 do {                                                                       \
@@ -1401,6 +1433,55 @@ do {                                                                       \
 } while (0)
 
 typedef Julie_Value *Julie_Value_Ptr;
+
+struct Julie_Mailbox_Struct {
+    pthread_mutex_t  lock;
+    pthread_cond_t   cond;
+    Julie_Array     *queue;
+    int              closed;
+};
+
+typedef struct {
+    char        *name;
+    Julie_Value *value;
+} Julie_Detached_Capture;
+
+typedef struct {
+    char        *name;
+    Julie_Value *value;
+} Julie_Detached_Binding;
+
+typedef struct {
+    char        *cur_file;
+    Julie_Array *captures;
+} Julie_Detached_Closure_Info;
+
+struct Julie_Actor_Struct {
+    pthread_t                 thread;
+    Julie_Mailbox             mailbox;
+    volatile int              alive;
+    volatile int              rc;
+    volatile int              stop;
+    int                       joined;
+    int                       is_main;
+    Julie_Value              *detached_result;
+    Julie_Status              final_status;
+    Julie_Value              *detached_error_value;
+    Julie_Value              *detached_expr;
+    Julie_Array              *bindings;
+    Julie_Actor              *parent;
+    Julie_Output_Callback     output_callback;
+#ifdef JULIE_ENABLE_EVAL_CALLBACKS
+    Julie_Eval_Callback       eval_callback;
+    Julie_Post_Eval_Callback  post_eval_callback;
+#endif
+    pthread_mutex_t           children_mtx;
+    Julie_Array              *children;
+};
+
+static void julie_actor_ref(Julie_Actor *actor);
+static void julie_actor_unref(Julie_Actor *actor);
+static void julie_free_detached_value(Julie_Value *value);
 
 
 
@@ -1471,7 +1552,8 @@ struct Julie_Interp_Struct {
 #endif
 
     Julie_Error_Info                       sandbox_error_info;
-    int                                    is_sandboxed;
+
+    Julie_Actor                           *actor;
 
     Julie_Array                           *argv;
 
@@ -1511,28 +1593,28 @@ struct Julie_Interp_Struct {
     hash_table(Julie_String_ID, regex_t)   compiled_regex;
 };
 
-static Julie_Value *julie_new_value(Julie_Interp *interp) {
-    Julie_Value *val = interp->value_free_list;
+// static Julie_Value *julie_new_value(Julie_Interp *interp) {
+//     Julie_Value *val = interp->value_free_list;
 
-    if (likely(val != NULL)) {
-        interp->value_free_list = val->free_list_next;
-    } else {
-        val = malloc(sizeof(Julie_Value));
-    }
+//     if (likely(val != NULL)) {
+//         interp->value_free_list = val->free_list_next;
+//     } else {
+//         val = malloc(sizeof(Julie_Value));
+//     }
 
-    return val;
-}
+//     return val;
+// }
 
-static void julie_del_value(Julie_Interp *interp, Julie_Value *value) {
-    value->free_list_next   = interp->value_free_list;
-    interp->value_free_list = value;
-}
+// static void julie_del_value(Julie_Interp *interp, Julie_Value *value) {
+//     value->free_list_next   = interp->value_free_list;
+//     interp->value_free_list = value;
+// }
 
-#define JULIE_NEW(_interp)         (julie_new_value((_interp)))
-#define JULIE_DEL(_interp, _value) (julie_del_value((_interp), (_value)))
+// #define JULIE_NEW(_interp)         (julie_new_value((_interp)))
+// #define JULIE_DEL(_interp, _value) (julie_del_value((_interp), (_value)))
 
-// #define JULIE_NEW()       (malloc(sizeof(Julie_Value)))
-// #define JULIE_DEL(_value) (free((_value)))
+#define JULIE_NEW(_interp)         (malloc(sizeof(Julie_Value)))
+#define JULIE_DEL(_interp, _value) (free((_value)))
 
 
 static Julie_Apply_Context *julie_push_cxt(Julie_Interp *interp, Julie_Value *value) {
@@ -1590,13 +1672,6 @@ enum {
     _JULIE_STRING_NO_TAG,
     JULIE_STRING_AMPERSAND,
     JULIE_STRING_QUOTE,
-};
-
-struct Julie_String_Struct {
-    char               *chars;
-    unsigned long long  len;
-    unsigned long long  hash;
-    unsigned            tag;
 };
 
 #define JULIE_STRING_ID_HASH(_id) (((const Julie_String*)(_id))->hash)
@@ -1682,11 +1757,19 @@ Julie_String_ID julie_value_string_id(Julie_Interp *interp, const Julie_Value *v
     __builtin_unreachable();
 }
 
+use_hash_table(Julie_Value_Ptr, Julie_Value_Ptr)
+typedef hash_table(Julie_Value_Ptr, Julie_Value_Ptr) _Julie_Object;
 
 static int julie_equal(Julie_Value *a, Julie_Value *b) {
-    unsigned long long  i;
-    Julie_Value        *ia;
-    Julie_Value        *ib;
+    unsigned long long   i;
+    Julie_Value         *ia;
+    Julie_Value         *ib;
+    Julie_Closure_Info  *closurea;
+    Julie_Closure_Info  *closureb;
+    Julie_String_ID      sym;
+    Julie_Value        **val;
+    Julie_Value        **lookup;
+    Julie_Value         *key;
 
     if (a->type != b->type) { return 0; }
 
@@ -1706,15 +1789,38 @@ static int julie_equal(Julie_Value *a, Julie_Value *b) {
             }
             return strcmp(julie_value_cstring(a), julie_value_cstring(b)) == 0;
         case JULIE_LIST:
+        case JULIE_FN:
+        case JULIE_LAMBDA:
             if (julie_array_len(a->list) != julie_array_len(b->list)) { return 0; }
             for (i = 0; i < julie_array_len(a->list); i += 1) {
                 ia = julie_array_elem(a->list, i);
                 ib = julie_array_elem(b->list, i);
                 if (!julie_equal(ia, ib)) { return 0; }
             }
+
+            if (a->type == JULIE_LAMBDA) {
+                closurea = julie_array_get_aux(a->list);
+                closureb = julie_array_get_aux(b->list);
+
+                hash_table_traverse(closurea->captures, sym, val) {
+                    lookup = hash_table_get_val(closureb->captures, sym);
+                    if (lookup == NULL || !julie_equal(*val, *lookup)) { return 0; }
+                }
+            }
+
             return 1;
+        case JULIE_OBJECT:
+        case JULIE_ERROR:
+            hash_table_traverse((_Julie_Object)a->object, key, val) {
+                lookup = hash_table_get_val((_Julie_Object)b->object, key);
+                if (lookup == NULL || !julie_equal(*val, *lookup)) { return 0; }
+            }
+            return 1;
+        case JULIE_BUILTIN_FN:
+            return a->builtin_fn == b->builtin_fn;
+        case JULIE_ACTOR:
+            return a->actor == b->actor;
         default:
-            /* @todo: all types should be covered here */
             JULIE_ASSERT(0);
             break;
     }
@@ -1745,9 +1851,6 @@ static unsigned long long julie_value_hash(Julie_Value *val) {
     return 0;
 }
 
-
-use_hash_table(Julie_Value_Ptr, Julie_Value_Ptr)
-typedef hash_table(Julie_Value_Ptr, Julie_Value_Ptr) _Julie_Object;
 
 
 static Julie_Value *_julie_copy_real(Julie_Interp *interp, Julie_Value *value, int force);
@@ -1794,6 +1897,7 @@ static Julie_Value *_julie_copy_real(Julie_Interp *interp, Julie_Value *value, i
             break;
 
         case JULIE_OBJECT:
+        case JULIE_ERROR:
             obj = copy->object;
             copy->object = hash_table_make_e(Julie_Value_Ptr, Julie_Value_Ptr, julie_value_hash, julie_equal);
             hash_table_traverse(obj, key, val) {
@@ -1829,31 +1933,36 @@ static Julie_Value *_julie_copy_real(Julie_Interp *interp, Julie_Value *value, i
             }
             JULIE_ARRAY_SET_AUX(copy->list, closure_cpy);
             break;
+
+        case JULIE_ACTOR:
+            julie_actor_ref(value->actor);
+            break;
     }
 
     return copy;
 }
 
-static Julie_Value *julie_copy(Julie_Interp *interp, Julie_Value *value) {
+Julie_Value *julie_copy(Julie_Interp *interp, Julie_Value *value) {
     return _julie_copy(interp, value, 0);
 }
 
-static Julie_Value *julie_force_copy(Julie_Interp *interp, Julie_Value *value) {
+Julie_Value *julie_force_copy(Julie_Interp *interp, Julie_Value *value) {
     return _julie_copy(interp, value, 1);
 }
 
-static Julie_Value *julie_copy_sandboxed_value(Julie_Interp *dst_interp, Julie_Value *value) {
-    Julie_Value         *copy;
-    Julie_Value         *it;
-    _Julie_Object        obj;
-    Julie_Value         *key;
-    Julie_Value        **val;
-    Julie_Closure_Info  *closure;
-    Julie_Closure_Info  *closure_cpy;
-    Julie_String_ID      sym;
+static Julie_Value *julie_detach_value(Julie_Value *value) {
+    Julie_Value                  *copy;
+    Julie_Source_Value_Info      *source_info;
+    Julie_Source_Value_Info      *new_source_info;
+    Julie_Value                  *it;
+    Julie_Value                  *key;
+    Julie_Value                 **val;
+    Julie_Closure_Info           *closure;
+    Julie_Detached_Closure_Info  *dclosure;
+    Julie_Detached_Binding       *new_binding;
+    Julie_String_ID               sym;
 
-    copy = JULIE_NEW(dst_interp);
-
+    copy = malloc(sizeof(Julie_Value));
     *copy              = *value;
     copy->owned        = 0;
     copy->borrow_count = 0;
@@ -1862,29 +1971,34 @@ static Julie_Value *julie_copy_sandboxed_value(Julie_Interp *dst_interp, Julie_V
     switch (value->type) {
         case JULIE_STRING:
         case JULIE_SYMBOL:
-            if (value->tag == JULIE_STRING_TYPE_INTERN) {
-                copy->string_id = julie_get_string_id(dst_interp, julie_get_cstring(value->string_id));
-            } else if (value->tag == JULIE_STRING_TYPE_MALLOC) {
-                copy->cstring = strdup(value->cstring);
-            }
+            copy->cstring = strdup(julie_value_cstring(value));
+            copy->tag     = JULIE_STRING_TYPE_MALLOC;
             break;
 
         case JULIE_LIST:
             copy->list = JULIE_ARRAY_INIT;
             JULIE_ARRAY_RESERVE(copy->list, julie_array_len(value->list));
             ARRAY_FOR_EACH(value->list, it) {
-                JULIE_ARRAY_PUSH(copy->list, julie_copy_sandboxed_value(dst_interp, it));
+                JULIE_ARRAY_PUSH(copy->list, julie_detach_value(it));
             }
-            JULIE_ARRAY_SET_AUX(copy->list, julie_array_get_aux(value->list));
+
+            source_info = julie_get_source_value_info(value);
+
+            if (source_info != NULL) {
+                new_source_info = malloc(sizeof(*new_source_info));
+                memcpy(new_source_info, source_info, sizeof(*new_source_info));
+                new_source_info->file_name = strdup(julie_get_cstring(source_info->file_id));
+                JULIE_ARRAY_SET_AUX(copy->list, (void*)(((unsigned long long)new_source_info) | 1ull));
+            }
+
             break;
 
         case JULIE_OBJECT:
-            obj = copy->object;
-            copy->object = hash_table_make_e(Julie_Value_Ptr, Julie_Value_Ptr, julie_value_hash, julie_equal);
-            hash_table_traverse(obj, key, val) {
-                hash_table_insert((_Julie_Object)copy->object,
-                                  julie_copy_sandboxed_value(dst_interp, key),
-                                  julie_copy_sandboxed_value(dst_interp, *val));
+        case JULIE_ERROR:
+            copy->object = hash_table_make_e(Julie_Value_Ptr, Julie_Value_Ptr,
+                                             julie_value_hash, julie_equal);
+            hash_table_traverse((_Julie_Object)value->object, key, val) {
+                hash_table_insert((_Julie_Object)copy->object, julie_detach_value(key), julie_detach_value(*val));
             }
             break;
 
@@ -1892,7 +2006,7 @@ static Julie_Value *julie_copy_sandboxed_value(Julie_Interp *dst_interp, Julie_V
             copy->list = JULIE_ARRAY_INIT;
             JULIE_ARRAY_RESERVE(copy->list, julie_array_len(value->list));
             ARRAY_FOR_EACH(value->list, it) {
-                JULIE_ARRAY_PUSH(copy->list, julie_copy_sandboxed_value(dst_interp, it));
+                JULIE_ARRAY_PUSH(copy->list, julie_detach_value(it));
             }
             break;
 
@@ -1900,25 +2014,229 @@ static Julie_Value *julie_copy_sandboxed_value(Julie_Interp *dst_interp, Julie_V
             copy->list = JULIE_ARRAY_INIT;
             JULIE_ARRAY_RESERVE(copy->list, julie_array_len(value->list));
             ARRAY_FOR_EACH(value->list, it) {
-                JULIE_ARRAY_PUSH(copy->list, julie_copy_sandboxed_value(dst_interp, it));
+                JULIE_ARRAY_PUSH(copy->list, julie_detach_value(it));
             }
 
-            closure     = julie_array_get_aux(value->list);
-            closure_cpy = malloc(sizeof(*closure_cpy));
+            closure  = julie_array_get_aux(value->list);
+            dclosure = malloc(sizeof(*dclosure));
 
-            closure_cpy->cur_file = closure->cur_file;
-            closure_cpy->captures = hash_table_make(Julie_String_ID, Julie_Value_Ptr, julie_string_id_hash);
+            dclosure->cur_file = closure->cur_file
+                ? strdup(julie_get_cstring(closure->cur_file))
+                : NULL;
 
+            dclosure->captures = JULIE_ARRAY_INIT;
             hash_table_traverse(closure->captures, sym, val) {
-                hash_table_insert(closure_cpy->captures, sym, julie_copy_sandboxed_value(dst_interp, *val));
+                new_binding        = malloc(sizeof(*new_binding));
+                new_binding->name  = strdup(julie_get_cstring(sym));
+                new_binding->value = julie_detach_value(*val);
+                JULIE_ARRAY_PUSH(dclosure->captures, new_binding);
             }
-            JULIE_ARRAY_SET_AUX(copy->list, closure_cpy);
+
+            JULIE_ARRAY_SET_AUX(copy->list, dclosure);
+            break;
+
+        case JULIE_ACTOR:
+            julie_actor_ref(copy->actor);
             break;
     }
 
     return copy;
 }
 
+static Julie_Value *_julie_attach_value(Julie_Interp *dst, Julie_Value *detached, int source_node) {
+    Julie_Value                  *copy;
+    Julie_Source_Value_Info      *source_info;
+    char                         *file_name;
+    Julie_Value                  *it;
+    Julie_Value                  *key;
+    Julie_Value                 **val;
+    Julie_Detached_Closure_Info  *dclosure;
+    Julie_Closure_Info           *closure;
+    Julie_Detached_Binding       *dbinding;
+
+    copy = JULIE_NEW(dst);
+
+    *copy              = *detached;
+    copy->owned        = 0;
+    copy->borrow_count = 0;
+    copy->source_node  = !!source_node;
+
+    switch (detached->type) {
+        case JULIE_STRING:
+            /* Good to go. Malloc'd string. */
+            break;
+
+        case JULIE_SYMBOL:
+            copy->tag       = JULIE_STRING_TYPE_INTERN;
+            copy->string_id = julie_get_string_id(dst, detached->cstring);
+            free(detached->cstring);
+            break;
+
+        case JULIE_LIST:
+            copy->list = JULIE_ARRAY_INIT;
+            JULIE_ARRAY_RESERVE(copy->list, julie_array_len(detached->list));
+            ARRAY_FOR_EACH(detached->list, it) {
+                JULIE_ARRAY_PUSH(copy->list, _julie_attach_value(dst, it, source_node));
+            }
+            source_info = julie_get_source_value_info(detached);
+            if (source_info != NULL) {
+                file_name = source_info->file_name;
+                source_info->file_id = julie_get_string_id(dst, file_name);
+                free(file_name);
+                JULIE_ARRAY_PUSH(dst->source_infos, source_info);
+                JULIE_ARRAY_SET_AUX(copy->list, detached->list->aux);
+            }
+            julie_array_free(detached->list);
+            break;
+
+        case JULIE_OBJECT:
+        case JULIE_ERROR:
+            copy->object = hash_table_make_e(Julie_Value_Ptr, Julie_Value_Ptr,
+                                             julie_value_hash, julie_equal);
+            hash_table_traverse((_Julie_Object)detached->object, key, val) {
+                hash_table_insert((_Julie_Object)copy->object, _julie_attach_value(dst, key, source_node), _julie_attach_value(dst, *val, source_node));
+            }
+            hash_table_free((_Julie_Object)detached->object);
+            break;
+
+        case JULIE_FN:
+            copy->list = JULIE_ARRAY_INIT;
+            JULIE_ARRAY_RESERVE(copy->list, julie_array_len(detached->list));
+            ARRAY_FOR_EACH(detached->list, it) {
+                JULIE_ARRAY_PUSH(copy->list, _julie_attach_value(dst, it, source_node));
+            }
+            julie_array_free(detached->list);
+            break;
+
+        case JULIE_LAMBDA:
+            copy->list = JULIE_ARRAY_INIT;
+            JULIE_ARRAY_RESERVE(copy->list, julie_array_len(detached->list));
+
+            dclosure = (Julie_Detached_Closure_Info*)
+                            julie_array_get_aux(detached->list);
+
+            ARRAY_FOR_EACH(detached->list, it) {
+                JULIE_ARRAY_PUSH(copy->list, _julie_attach_value(dst, it, source_node));
+            }
+            julie_array_free(detached->list);
+
+            closure = malloc(sizeof(*closure));
+            closure->cur_file = dclosure->cur_file
+                ? julie_get_string_id(dst, dclosure->cur_file)
+                : NULL;
+            closure->captures = hash_table_make(Julie_String_ID, Julie_Value_Ptr, julie_string_id_hash);
+
+            ARRAY_FOR_EACH(dclosure->captures, dbinding) {
+                hash_table_insert(closure->captures,
+                                  julie_get_string_id(dst, dbinding->name),
+                                  _julie_attach_value(dst, dbinding->value, source_node));
+
+                free(dbinding->name);
+                free(dbinding);
+            }
+            julie_array_free(dclosure->captures);
+            if (dclosure->cur_file != NULL) {
+                free(dclosure->cur_file);
+            }
+            free(dclosure);
+
+            JULIE_ARRAY_SET_AUX(copy->list, closure);
+            break;
+
+        case JULIE_ACTOR:
+            /* refcount was already bumped during detach */
+            break;
+    }
+
+    free(detached);
+    return copy;
+}
+
+static Julie_Value *julie_attach_value(Julie_Interp *dst, Julie_Value *detached) {
+    return _julie_attach_value(dst, detached, 0);
+}
+
+static Julie_Value *julie_attach_source_value(Julie_Interp *dst, Julie_Value *detached) {
+    return _julie_attach_value(dst, detached, 1);
+}
+
+static void julie_free_detached_value(Julie_Value *value) {
+    Julie_Source_Value_Info      *source_info;
+    Julie_Value                  *it;
+    Julie_Value                  *key;
+    Julie_Value                 **val;
+    Julie_Detached_Closure_Info  *dclosure;
+    Julie_Detached_Binding       *dbinding;
+
+    if (value == NULL) { return; }
+
+    switch (value->type) {
+        case JULIE_STRING:
+        case JULIE_SYMBOL:
+            if (value->tag == JULIE_STRING_TYPE_MALLOC) {
+                free(value->cstring);
+            }
+            break;
+
+        case JULIE_LIST:
+            ARRAY_FOR_EACH(value->list, it) {
+                julie_free_detached_value(it);
+            }
+            source_info = julie_get_source_value_info(value);
+            if (source_info != NULL) {
+                free(source_info->file_name);
+                free(source_info);
+            }
+            julie_array_free(value->list);
+            break;
+
+        case JULIE_OBJECT:
+        case JULIE_ERROR:
+            hash_table_traverse((_Julie_Object)value->object, key, val) {
+                julie_free_detached_value(key);
+                julie_free_detached_value(*val);
+            }
+            hash_table_free((_Julie_Object)value->object);
+            break;
+
+        case JULIE_FN:
+            ARRAY_FOR_EACH(value->list, it) {
+                julie_free_detached_value(it);
+            }
+            julie_array_free(value->list);
+            break;
+
+        case JULIE_LAMBDA:
+            dclosure = (Julie_Detached_Closure_Info*)
+                            julie_array_get_aux(value->list);
+            if (dclosure != NULL) {
+                ARRAY_FOR_EACH(dclosure->captures, dbinding) {
+                    free(dbinding->name);
+                    julie_free_detached_value(dbinding->value);
+                    free(dbinding);
+                }
+                julie_array_free(dclosure->captures);
+                if (dclosure->cur_file != NULL) {
+                    free(dclosure->cur_file);
+                }
+                free(dclosure);
+            }
+            ARRAY_FOR_EACH(value->list, it) {
+                julie_free_detached_value(it);
+            }
+            julie_array_free(value->list);
+            break;
+
+        case JULIE_ACTOR:
+            julie_actor_unref((Julie_Actor*)value->object);
+            break;
+
+        default:
+            break;
+    }
+
+    free(value);
+}
 
 static void _julie_free_value_real(Julie_Interp * interp, Julie_Value *value, int free_root, int force, int free_source_nodes, Julie_Value *survivor);
 
@@ -1971,6 +2289,7 @@ done_string:;
             break;
 
         case JULIE_OBJECT:
+        case JULIE_ERROR:
             hash_table_traverse((_Julie_Object)value->object, key, val) {
                 _julie_free_value(interp, key, 1, force, free_source_nodes, NULL);
                 _julie_free_value(interp, *val, 1, force, free_source_nodes, survivor);
@@ -1999,6 +2318,10 @@ done_string:;
             }
             julie_array_free(value->list);
 
+            break;
+
+        case JULIE_ACTOR:
+            julie_actor_unref((Julie_Actor*)value->object);
             break;
     }
 
@@ -2047,6 +2370,7 @@ static int julie_borrows_to_subvalues_outstanding(Julie_Value *top, Julie_Value 
             break;
 
         case JULIE_OBJECT:
+        case JULIE_ERROR:
             hash_table_traverse((_Julie_Object)value->object, key, val) {
                 (void)key;
                 if (julie_borrows_to_subvalues_outstanding(top, *val)) {
@@ -2080,6 +2404,7 @@ static inline void julie_replace_value(Julie_Interp *interp, Julie_Value *dst, J
 
     JULIE_ASSERT(!src->owned);
     JULIE_ASSERT(src->borrow_count == 0);
+    JULIE_ASSERT(!dst->source_node);
 
     /* Overwrite dst with val data, preserving original address. */
     save_owned = dst->owned;
@@ -2090,6 +2415,7 @@ static inline void julie_replace_value(Julie_Interp *interp, Julie_Value *dst, J
     *dst = *src;
     dst->borrow_count = save_bc;
     dst->owned = save_owned;
+    dst->source_node = 0;
 
     if (!src->source_node) {
         /* Free up copied outer src value. */
@@ -2178,6 +2504,57 @@ Julie_Status julie_object_delete_field(Julie_Interp *interp, Julie_Value *object
     julie_free_value(interp, val);
 
     return JULIE_SUCCESS;
+}
+
+Julie_Value *julie_error_value(Julie_Interp *interp, const char *error_message) {
+    Julie_Value           *v;
+    Julie_Value           *key;
+    Julie_Value           *message;
+    Julie_Value           *backtrace;
+    unsigned long long     i;
+    Julie_Backtrace_Entry *it;
+    char                  *s;
+    char                   buff[4096];
+
+    v = JULIE_NEW(interp);
+
+    v->type         = JULIE_ERROR;
+    v->object       = hash_table_make_e(Julie_Value_Ptr, Julie_Value_Ptr, julie_value_hash, julie_equal);
+    v->tag          = 0;
+    v->source_node  = 0;
+    v->owned        = 0;
+    v->borrow_count = 0;
+
+    key     = julie_symbol_value(interp, julie_get_string_id(interp, "'__message__"));
+    message = julie_string_value(interp, error_message);
+    julie_object_insert_field(interp, v, key, message, NULL);
+
+    key = julie_symbol_value(interp, julie_get_string_id(interp, "'__backtrace__"));
+
+    backtrace = julie_list_value(interp);
+
+    i = 0;
+    while ((it = julie_bt_entry(interp, i)) != NULL) {
+        s = julie_to_string(interp, it->fn, 0);
+        snprintf(buff, sizeof(buff), "%s:%llu:%llu %s",
+                 it->file_id == NULL ? "<?>" : julie_get_cstring(it->file_id),
+                 it->line,
+                 it->col,
+                 s);
+        free(s);
+        JULIE_ARRAY_PUSH(backtrace->list, julie_string_value(interp, buff));
+
+        i += 1;
+    }
+
+    if (!interp->actor->is_main) {
+        snprintf(buff, sizeof(buff), "<actor %p>", (void*)interp->actor);
+        JULIE_ARRAY_PUSH(backtrace->list, julie_string_value(interp, buff));
+    }
+
+    julie_object_insert_field(interp, v, key, backtrace, NULL);
+
+    return v;
 }
 
 Julie_Value *julie_nil_value(Julie_Interp *interp) {
@@ -2551,6 +2928,10 @@ do {                                            \
     }
 
     switch (value->type) {
+        case JULIE_ERROR:
+            PUSHS("<error>: ");
+            goto object_print;
+            break;
         case JULIE_NIL:
             PUSHS("nil");
             break;
@@ -2610,6 +2991,7 @@ do {                                            \
             PUSHC(')');
             break;
         case JULIE_OBJECT:
+object_print:;
             PUSHC('{');
             PUSHC((flags & JULIE_MULTILINE) ? '\n' : ' ');
             hash_table_traverse((_Julie_Object)value->object, key, val) {
@@ -2683,6 +3065,10 @@ do {                                            \
                     PUSHC(')');
                 }
             }
+            break;
+        case JULIE_ACTOR:
+            snprintf(b, sizeof(b), "<actor %p>", (void*)value->actor);
+            PUSHS(b);
             break;
         default:
             JULIE_ASSERT(0);
@@ -2999,7 +3385,7 @@ static Julie_Status julie_pop_local_symtab(Julie_Interp *interp, Julie_String_ID
             if (julie_symbol_starts_with_ampersand(interp, id)
             &&  val->type != JULIE_BUILTIN_FN) {
 
-                JULIE_UNBORROW(val);
+                JULIE_UNBORROW_NO_CHECK(val);
             }
         }
 
@@ -3025,7 +3411,7 @@ static Julie_Status julie_pop_local_symtab(Julie_Interp *interp, Julie_String_ID
             if (julie_symbol_starts_with_ampersand(interp, id)
             &&  val->type != JULIE_BUILTIN_FN) {
 
-                JULIE_UNBORROW(val);
+                JULIE_UNBORROW_NO_CHECK(val);
             }
         }
 
@@ -3067,17 +3453,13 @@ static Julie_Status _julie_bind_new(Julie_Interp           *interp,
         return JULIE_ERR_REF_OF_TRANSIENT;
     }
 
-    need_copy = 1;
+    JULIE_ASSERT(!ref || (*valuep)->owned);
 
-    if (!(*valuep)->source_node) {
-        if (ref) {
-            JULIE_ASSERT((*valuep)->owned);
+    need_copy = !ref;
 
+    if (!ref) {
+        if (!(*valuep)->owned && !(*valuep)->source_node) {
             need_copy = 0;
-        } else {
-            if (!(*valuep)->owned) {
-                need_copy = 0;
-            }
         }
     }
 
@@ -3088,7 +3470,8 @@ static Julie_Status _julie_bind_new(Julie_Interp           *interp,
     }
 
     if (ref) {
-        JULIE_BORROW(*valuep);
+        JULIE_ASSERT((*valuep)->owned);
+        JULIE_BORROW_NO_CHECK(*valuep);
     } else {
         JULIE_ASSERT(!(*valuep)->owned);
         (*valuep)->owned = 1;
@@ -3122,6 +3505,7 @@ static Julie_Status _julie_bind_existing(Julie_Interp           *interp,
     }
 
     julie_replace_value(interp, existing, *valuep);
+    *valuep = existing;
 
     return JULIE_SUCCESS;
 }
@@ -3167,7 +3551,7 @@ static Julie_Status _julie_unbind(Julie_Interp *interp, const Julie_String_ID na
 
     if (ref) {
         JULIE_ASSERT(value->owned);
-        JULIE_UNBORROW(value);
+        JULIE_UNBORROW_NO_CHECK(value);
     } else {
         if (julie_borrows_outstanding(value)) {
             return JULIE_ERR_RELEASE_WHILE_BORROWED;
@@ -3228,12 +3612,112 @@ Julie_Value *julie_lookup(Julie_Interp *interp, const Julie_String_ID id) {
 
     if (unlikely(val == NULL)) { return NULL; }
 
+    JULIE_ASSERT(val->owned);
+
     return val;
 }
 
 /*********************************************************
  *                         Errors                        *
  *********************************************************/
+
+char *julie_get_pretty_error_string(Julie_Error_Info *info, const char *blue, const char *red, const char *normal) {
+    char *message;
+    int   size;
+    char *s;
+
+    message    = malloc(64);
+    message[0] = 0;
+    size       = 64;
+
+#define P(_fmt, ...)                                                                                              \
+do {                                                                                                              \
+    char *write_to = message + strlen(message);                                                                   \
+    while ((size_t)snprintf(write_to, size - strlen(message), (_fmt), __VA_ARGS__) >= (size - strlen(message))) { \
+        size += 64;                                                                                               \
+        int off = (write_to - message);                                                                           \
+        message = realloc(message, size);                                                                         \
+        write_to = message + off;                                                                                 \
+    }                                                                                                             \
+} while (0)
+
+
+    P("%s%s:%llu:%llu:%s %serror: %s",
+      blue,
+      info->file_id == NULL ? "<?>" : julie_get_cstring(info->file_id),
+      info->line,
+      info->col,
+      normal,
+      red,
+      julie_error_string(info->status));
+
+    switch (info->status) {
+        case JULIE_ERR_LOOKUP:
+            if (info->lookup.sym != NULL) {
+                P(" (%s)", info->lookup.sym);
+            }
+            break;
+        case JULIE_ERR_RELEASE_WHILE_BORROWED:
+            if (info->release_while_borrowed.sym != NULL) {
+                P(" (%s)", info->release_while_borrowed.sym);
+            }
+            break;
+        case JULIE_ERR_REF_OF_TRANSIENT:
+            if (info->ref_of_transient.sym != NULL) {
+                P(" (%s)", info->ref_of_transient.sym);
+            }
+            break;
+        case JULIE_ERR_REF_OF_OBJECT_KEY:
+            if (info->ref_of_object_key.sym != NULL) {
+                P(" (%s)", info->ref_of_object_key.sym);
+            }
+            break;
+        case JULIE_ERR_NOT_LVAL:
+            if (info->not_lval.sym != NULL) {
+                P(" (%s)", info->not_lval.sym);
+            }
+            break;
+        case JULIE_ERR_MODIFY_WHILE_ITER:
+            if (info->modify_while_iter.sym != NULL) {
+                P(" (%s)", info->modify_while_iter.sym);
+            }
+            break;
+        case JULIE_ERR_ARITY:
+            P(" (wanted %s%llu, got %llu)",
+              info->arity.at_least ? "at least " : "",
+              info->arity.wanted_arity,
+              info->arity.got_arity);
+            break;
+        case JULIE_ERR_TYPE:
+            P(" (wanted %s, got %s)",
+              julie_type_string(info->type.wanted_type),
+              julie_type_string(info->type.got_type));
+            break;
+        case JULIE_ERR_BAD_APPLY:
+            P(" (got %s)", julie_type_string(info->bad_application.got_type));
+            break;
+        case JULIE_ERR_BAD_INDEX:
+            s = julie_to_string(info->interp, info->bad_index.bad_index, 0);
+            P(" (index: %s)", s);
+            free(s);
+            break;
+        case JULIE_ERR_FILE_NOT_FOUND:
+        case JULIE_ERR_FILE_IS_DIR:
+        case JULIE_ERR_MMAP_FAILED:
+            P(" (%s)", info->file.path);
+            break;
+        case JULIE_ERR_LOAD_PACKAGE_FAILURE:
+            P(" (%s) %s", info->load_package_failure.path, info->load_package_failure.package_error_message);
+            break;
+        case JULIE_ERR_REGEX:
+            P(" %s", info->regex.regex_error_message);
+            break;
+        default:
+            break;
+    }
+
+    return message;
+}
 
 void julie_free_error_info(Julie_Error_Info *info) {
 
@@ -3245,6 +3729,15 @@ void julie_free_error_info(Julie_Error_Info *info) {
             break;
         case JULIE_ERR_RELEASE_WHILE_BORROWED:
             FREE_IF_NOT_NULL(info->release_while_borrowed.sym);
+            break;
+        case JULIE_ERR_REF_OF_TRANSIENT:
+            FREE_IF_NOT_NULL(info->ref_of_transient.sym);
+            break;
+        case JULIE_ERR_REF_OF_OBJECT_KEY:
+            FREE_IF_NOT_NULL(info->ref_of_object_key.sym);
+            break;
+        case JULIE_ERR_NOT_LVAL:
+            FREE_IF_NOT_NULL(info->not_lval.sym);
             break;
         case JULIE_ERR_MODIFY_WHILE_ITER:
             FREE_IF_NOT_NULL(info->modify_while_iter.sym);
@@ -3269,6 +3762,9 @@ void julie_free_error_info(Julie_Error_Info *info) {
             break;
         case JULIE_ERR_REGEX:
             FREE_IF_NOT_NULL(info->regex.regex_error_message);
+            break;
+        case JULIE_ERR_ERROR_VALUE:
+            julie_free_value(info->interp, info->thrown.error_value);
             break;
         default:
             break;
@@ -3440,7 +3936,7 @@ void julie_make_load_package_error(Julie_Interp *interp, Julie_Value *expr, Juli
     info.status                = status;
 
     info.load_package_failure.path = strdup(path);
-    info.load_package_failure.package_error_message = message == NULL ? "unknown error" : strdup(message);
+    info.load_package_failure.package_error_message = message == NULL ? strdup("unknown error") : strdup(message);
 
     JULIE_ARRAY_PUSH(interp->value_stack, expr);
     julie_error(interp, &info);
@@ -3454,6 +3950,19 @@ void julie_make_regex_error(Julie_Interp *interp, Julie_Value *expr, const char 
     info.status                = JULIE_ERR_REGEX;
 
     info.regex.regex_error_message = strdup(message);
+
+    JULIE_ARRAY_PUSH(interp->value_stack, expr);
+    julie_error(interp, &info);
+    julie_array_pop(interp->value_stack);
+}
+
+void julie_make_runtime_error(Julie_Interp *interp, Julie_Value *expr, Julie_Value *error_value) {
+    Julie_Error_Info info;
+    memset(&info, 0, sizeof(info));
+    info.interp                = interp;
+    info.status                = JULIE_ERR_ERROR_VALUE;
+
+    info.thrown.error_value = julie_force_copy(interp, error_value);
 
     JULIE_ARRAY_PUSH(interp->value_stack, expr);
     julie_error(interp, &info);
@@ -3640,7 +4149,7 @@ static Julie_Value *julie_push_list(Julie_Parse_Context *cxt) {
     value->type         = JULIE_LIST;
     value->tag          = 0;
     value->source_node  = !cxt->temporary;
-    value->owned        = cxt->temporary;
+    value->owned        = 0;
     value->borrow_count = 0;
     value->list         = JULIE_ARRAY_INIT;
     JULIE_ARRAY_PUSH(cxt->parse_stack, value);
@@ -3650,6 +4159,7 @@ static Julie_Value *julie_push_list(Julie_Parse_Context *cxt) {
     info->ind     = cxt->ind;
     info->line    = cxt->line;
     info->col     = cxt->col;
+    info->paren   = 0;
 
     JULIE_ARRAY_SET_AUX(value->list, (void*)((unsigned long long)info | 1ull));
     JULIE_ARRAY_PUSH(cxt->interp->source_infos, info);
@@ -3693,8 +4203,11 @@ static Julie_Status julie_parse_next_value(Julie_Parse_Context *cxt, Julie_Value
     start_col = cxt->col;
 
     if (tk == JULIE_TK_LPAREN) {
+        top = julie_array_top(cxt->parse_stack);
+        julie_get_source_value_info(top)->paren = 1;
         julie_push_list(cxt);
         val = top = julie_array_top(cxt->parse_stack);
+        julie_get_source_value_info(top)->paren = 1;
 
         cxt->col += tk_end - tk_start;
 
@@ -3706,10 +4219,14 @@ static Julie_Status julie_parse_next_value(Julie_Parse_Context *cxt, Julie_Value
         }
 
         if (status != JULIE_SUCCESS) {
+            julie_free_value(cxt->interp, val);
+            julie_array_pop(cxt->parse_stack);
             PARSE_ERR_RET(cxt, status, cxt->line, cxt->col);
         }
 
         if (*tkout != JULIE_TK_RPAREN) {
+            julie_free_value(cxt->interp, val);
+            julie_array_pop(cxt->parse_stack);
             PARSE_ERR_RET(cxt, JULIE_ERR_MISSING_RPAREN, cxt->line, cxt->col);
         }
 
@@ -3738,12 +4255,16 @@ static Julie_Status julie_parse_next_value(Julie_Parse_Context *cxt, Julie_Value
     switch (tk) {
         case JULIE_TK_SYMBOL:
             if (tk_end - tk_start == 3 && strncmp(tk_start, "nil", tk_end - tk_start) == 0) {
-                val = julie_source_nil_value(cxt->interp);
+                val = cxt->temporary
+                        ? julie_nil_value(cxt->interp)
+                        : julie_source_nil_value(cxt->interp);
             } else {
                 sbuff = alloca(tk_end - tk_start + 1);
                 memcpy(sbuff, tk_start, tk_end - tk_start);
                 sbuff[tk_end - tk_start] = 0;
-                val = julie_source_symbol_value(cxt->interp, julie_get_string_id(cxt->interp, sbuff));
+                val = cxt->temporary
+                        ? julie_symbol_value(cxt->interp, julie_get_string_id(cxt->interp, sbuff))
+                        : julie_source_symbol_value(cxt->interp, julie_get_string_id(cxt->interp, sbuff));
             }
             break;
         case JULIE_TK_STRING:
@@ -3798,25 +4319,33 @@ add_char:;
 
             sbuff[slen] = 0;
 
-            val = julie_source_interned_string_value(cxt->interp, julie_get_string_id(cxt->interp, sbuff));
+            val = cxt->temporary
+                    ? julie_interned_string_value(cxt->interp, julie_get_string_id(cxt->interp, sbuff))
+                    : julie_source_interned_string_value(cxt->interp, julie_get_string_id(cxt->interp, sbuff));
             break;
         case JULIE_TK_SINT:
             strncpy(tk_copy, tk_start, tk_end - tk_start);
             tk_copy[tk_end - tk_start] = 0;
             sscanf(tk_copy, "%lld", &s);
-            val = julie_source_sint_value(cxt->interp, s);
+            val = cxt->temporary
+                    ? julie_sint_value(cxt->interp, s)
+                    : julie_source_sint_value(cxt->interp, s);
             break;
         case JULIE_TK_HEX:
             strncpy(tk_copy, tk_start, tk_end - tk_start);
             tk_copy[tk_end - tk_start] = 0;
             sscanf(tk_copy, "%llx", &u);
-            val = julie_source_uint_value(cxt->interp, u);
+            val = cxt->temporary
+                    ? julie_uint_value(cxt->interp, u)
+                    : julie_source_uint_value(cxt->interp, u);
             break;
         case JULIE_TK_FLOAT:
             strncpy(tk_copy, tk_start, tk_end - tk_start);
             tk_copy[tk_end - tk_start] = 0;
             sscanf(tk_copy, "%lg", &d);
-            val = julie_source_float_value(cxt->interp, d);
+            val = cxt->temporary
+                    ? julie_float_value(cxt->interp, d)
+                    : julie_source_float_value(cxt->interp, d);
             break;
         case JULIE_TK_EOS_ERR:
             PARSE_ERR_RET(cxt, JULIE_ERR_UNEXPECTED_EOS, cxt->line, start_col + (tk_end - tk_start));
@@ -3828,8 +4357,6 @@ add_char:;
 out_val:;
 
     JULIE_ASSERT(val != NULL);
-
-    if (cxt->temporary) { val->owned = 1; }
 
     *valout = val;
 
@@ -3891,7 +4418,7 @@ done:;
 }
 
 
-static Julie_Status julie_parse_roots(Julie_Interp *interp, Julie_Array **rootsp, const char *str, int size, unsigned long long *err_line, unsigned long long *err_col, int temporary) {
+Julie_Status julie_parse_roots(Julie_Interp *interp, Julie_Array **rootsp, const char *str, int size, unsigned long long *err_line, unsigned long long *err_col, int temporary) {
     Julie_Parse_Context  cxt;
     Julie_Status         status;
     Julie_Value         *it;
@@ -3916,8 +4443,14 @@ static Julie_Status julie_parse_roots(Julie_Interp *interp, Julie_Array **rootsp
     julie_array_free(cxt.parse_stack);
 
     if (status != JULIE_SUCCESS) {
-        ARRAY_FOR_EACH(cxt.roots, it) {
-            julie_free_source_node(interp, it);
+        if (temporary) {
+            ARRAY_FOR_EACH(cxt.roots, it) {
+                julie_free_value(interp, it);
+            }
+        } else {
+            ARRAY_FOR_EACH(cxt.roots, it) {
+                julie_free_source_node(interp, it);
+            }
         }
         julie_array_free(cxt.roots);
         cxt.roots = JULIE_ARRAY_INIT;
@@ -3957,9 +4490,10 @@ Julie_Status julie_parse(Julie_Interp *interp, const char *str, int size) {
  *                       Builtins                        *
  *********************************************************/
 
-static Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
+Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
+static Julie_Status julie_eval_no_throw(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
 static Julie_Status julie_invoke(Julie_Interp *interp, Julie_Value *list, Julie_Value *fn, unsigned long long n_values, Julie_Value **values, Julie_Value **result);
-static Julie_Value *julie_copy(Julie_Interp *interp, Julie_Value *value);
+Julie_Value *julie_copy(Julie_Interp *interp, Julie_Value *value);
 
 static unsigned _julie_arg_legend_get_arity(const char *legend) {
     unsigned legend_len;
@@ -4129,7 +4663,15 @@ static Julie_Status julie_builtin_typeof(Julie_Interp *interp, Julie_Value *expr
     Julie_Status  status;
     Julie_Value  *val;
 
-    status = julie_args(interp, expr, "*", n_values, values, &val);
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval_no_throw(interp, values[0], &val);
     if (status != JULIE_SUCCESS) {
         *result = NULL;
         goto out;
@@ -4347,6 +4889,8 @@ static Julie_Status julie_builtin_id(Julie_Interp *interp, Julie_Value *expr, un
         case JULIE_STRING:
         case JULIE_LIST:
         case JULIE_OBJECT:
+        case JULIE_ERROR:
+        case JULIE_ACTOR:
             status = julie_eval(interp, value, &ev);
             if (status != JULIE_SUCCESS) {
                 *result = NULL;
@@ -4399,6 +4943,105 @@ out:;
     return status;
 }
 
+static Julie_Status julie_builtin_error(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *message;
+
+    status = JULIE_SUCCESS;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        *result = NULL;
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &message);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out;
+    }
+
+    if (message->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, message, JULIE_STRING, message->type);
+        goto out_free_message;
+    }
+
+    *result = julie_error_value(interp, julie_value_cstring(message));
+
+out_free_message:;
+    julie_free_value(interp, message);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_error_field(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *error;
+    Julie_Value  *key;
+    Julie_Value  *field;
+
+    status = JULIE_SUCCESS;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        *result = NULL;
+        goto out;
+    }
+
+    status = julie_eval_no_throw(interp, values[0], &error);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out;
+    }
+
+    if (error->type != JULIE_ERROR) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_ERROR, error->type);
+        *result = NULL;
+        goto out_free_error;
+    }
+
+    status = julie_eval(interp, values[1], &key);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out_free_error;
+    }
+
+    if (!JULIE_TYPE_IS_KEYLIKE(key->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], _JULIE_KEYLIKE, key->type);
+        *result = NULL;
+        goto out_free_key;
+    }
+
+    field = julie_object_get_field(error, key);
+
+    if (field == NULL) {
+        status = JULIE_ERR_BAD_INDEX;
+        julie_make_bad_index_error(interp, values[1], key);
+        *result = NULL;
+        goto out_free_key;
+    } else {
+        field->owned = error->owned;
+        *result = julie_copy(interp, field);
+    }
+
+out_free_key:;
+    julie_free_value(interp, key);
+
+out_free_error:;
+    julie_free_value(interp, error);
+
+out:;
+    return status;
+}
+
 static Julie_Status _julie_builtin_assign(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result, int global) {
     Julie_Status     status;
     Julie_Value     *l;
@@ -4416,7 +5059,7 @@ static Julie_Status _julie_builtin_assign(Julie_Interp *interp, Julie_Value *exp
     }
 
     l = values[0];
-    status = julie_eval(interp, values[1], &rval);
+    status = julie_eval_no_throw(interp, values[1], &rval);
     if (status != JULIE_SUCCESS) { goto out; }
 
     if (l->type == JULIE_SYMBOL) {
@@ -4441,7 +5084,15 @@ static Julie_Status _julie_builtin_assign(Julie_Interp *interp, Julie_Value *exp
             *result = NULL;
             status = JULIE_ERR_NOT_LVAL;
             julie_make_bind_error(interp, l, status, NULL);
-            goto out_free;
+            goto out;
+        }
+
+        if (julie_borrows_to_subvalues_outstanding(lval, lval)) {
+            *result = NULL;
+            status = JULIE_ERR_RELEASE_WHILE_BORROWED;
+            julie_make_bind_error(interp, expr, status, NULL);
+            julie_free_value(interp, rval);
+            goto out;
         }
 
         if (rval->owned) {
@@ -4450,13 +5101,11 @@ static Julie_Status _julie_builtin_assign(Julie_Interp *interp, Julie_Value *exp
             rval = cpy;
         }
         julie_replace_value(interp, lval, rval);
+        JULIE_ASSERT(lval->owned);
         rval = lval;
     }
 
     *result = julie_nil_value(interp);
-
-out_free:;
-    julie_free_value(interp, l);
 
 out:;
     return status;
@@ -4470,7 +5119,7 @@ static Julie_Status julie_builtin_assign_global(Julie_Interp *interp, Julie_Valu
     return _julie_builtin_assign(interp, expr, n_values, values, result, 1);
 }
 
-static Julie_Status julie_builtin_unref(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+static Julie_Status julie_builtin_unbind(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status     status;
     Julie_Value     *sym;
     Julie_String_ID  id;
@@ -4493,15 +5142,7 @@ static Julie_Status julie_builtin_unref(Julie_Interp *interp, Julie_Value *expr,
         goto out;
     }
 
-    id = julie_value_string_id(interp, sym);
-
-    if (!julie_symbol_starts_with_ampersand(interp, id)) {
-        status = JULIE_ERR_NOT_REF;
-        julie_make_interp_error(interp, values[0], status);
-        *result = NULL;
-        goto out;
-    }
-
+    id     = julie_value_string_id(interp, sym);
     lookup = julie_lookup(interp, id);
 
     if (lookup == NULL) {
@@ -6291,6 +6932,269 @@ out:;
     return status;
 }
 
+static inline double julie_value_to_double(Julie_Value *v) {
+    if (v->type == JULIE_SINT) { return (double)v->sint; }
+    if (v->type == JULIE_UINT) { return (double)v->uint; }
+    return v->floating;
+}
+
+static Julie_Status julie_builtin_pow(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *base;
+    Julie_Value  *exponent;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &base);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(base->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], _JULIE_NUMBER, base->type);
+        julie_free_value(interp, base);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &exponent);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, base);
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(exponent->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], _JULIE_NUMBER, exponent->type);
+        julie_free_value(interp, base);
+        julie_free_value(interp, exponent);
+        goto out;
+    }
+
+    *result = julie_float_value(interp, pow(julie_value_to_double(base), julie_value_to_double(exponent)));
+    julie_free_value(interp, base);
+    julie_free_value(interp, exponent);
+
+out:;
+    return status;
+}
+
+static Julie_Status _julie_builtin_math1(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result, double (*fn)(double)) {
+    Julie_Status  status;
+    Julie_Value  *v;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &v);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(v->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], _JULIE_NUMBER, v->type);
+        julie_free_value(interp, v);
+        goto out;
+    }
+
+    *result = julie_float_value(interp, fn(julie_value_to_double(v)));
+    julie_free_value(interp, v);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_abs(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, fabs);
+}
+
+static Julie_Status julie_builtin_sqrt(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, sqrt);
+}
+
+static Julie_Status julie_builtin_floor(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, floor);
+}
+
+static Julie_Status julie_builtin_ceil(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, ceil);
+}
+
+static Julie_Status julie_builtin_round(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, round);
+}
+
+static Julie_Status julie_builtin_log(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, log);
+}
+
+static Julie_Status julie_builtin_log2(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, log2);
+}
+
+static Julie_Status julie_builtin_log10(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, log10);
+}
+
+static Julie_Status julie_builtin_exp(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, exp);
+}
+
+static Julie_Status julie_builtin_sin(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, sin);
+}
+
+static Julie_Status julie_builtin_cos(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, cos);
+}
+
+static Julie_Status julie_builtin_tan(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, tan);
+}
+
+static Julie_Status julie_builtin_asin(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, asin);
+}
+
+static Julie_Status julie_builtin_acos(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, acos);
+}
+
+static Julie_Status julie_builtin_atan(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_math1(interp, expr, n_values, values, result, atan);
+}
+
+static Julie_Status julie_builtin_atan2(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *y;
+    Julie_Value  *x;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &y);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(y->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], _JULIE_NUMBER, y->type);
+        julie_free_value(interp, y);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &x);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, y);
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(x->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], _JULIE_NUMBER, x->type);
+        julie_free_value(interp, y);
+        julie_free_value(interp, x);
+        goto out;
+    }
+
+    *result = julie_float_value(interp, atan2(julie_value_to_double(y), julie_value_to_double(x)));
+    julie_free_value(interp, y);
+    julie_free_value(interp, x);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_clamp(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *val;
+    Julie_Value  *lo;
+    Julie_Value  *hi;
+    double        dval;
+    double        dlo;
+    double        dhi;
+
+    *result = NULL;
+
+    if (n_values != 3) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 3, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &val);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(val->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], _JULIE_NUMBER, val->type);
+        julie_free_value(interp, val);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &lo);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, val);
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(lo->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], _JULIE_NUMBER, lo->type);
+        julie_free_value(interp, val);
+        julie_free_value(interp, lo);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[2], &hi);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, val);
+        julie_free_value(interp, lo);
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_NUMBER(hi->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[2], _JULIE_NUMBER, hi->type);
+        julie_free_value(interp, val);
+        julie_free_value(interp, lo);
+        julie_free_value(interp, hi);
+        goto out;
+    }
+
+    dval    = julie_value_to_double(val);
+    dlo     = julie_value_to_double(lo);
+    dhi     = julie_value_to_double(hi);
+    *result = julie_float_value(interp, dval < dlo ? dlo : dval > dhi ? dhi : dval);
+
+    julie_free_value(interp, val);
+    julie_free_value(interp, lo);
+    julie_free_value(interp, hi);
+
+out:;
+    return status;
+}
+
 static Julie_Status julie_builtin_list(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status  status;
     Julie_Value  *list;
@@ -6308,7 +7212,7 @@ static Julie_Status julie_builtin_list(Julie_Interp *interp, Julie_Value *expr, 
 
     for (i = 0; i < n_values; i += 1) {
         it     = values[i];
-        status = julie_eval(interp, it, &ev);
+        status = julie_eval_no_throw(interp, it, &ev);
         if (status != JULIE_SUCCESS) {
             *result = NULL;
             goto out_free;
@@ -6586,10 +7490,28 @@ static Julie_Status julie_builtin_insert(Julie_Interp *interp, Julie_Value *expr
     Julie_Value        *it;
     unsigned long long  i;
 
-    status = julie_args(interp, expr, "l*i", n_values, values, &list, &val, &idx);
+    *result = NULL;
+
+    status = JULIE_SUCCESS;
+
+    if (n_values != 3) {
+        *result = NULL;
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 3, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &list);
     if (status != JULIE_SUCCESS) {
         *result = NULL;
         goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        *result = NULL;
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_LIST, list->type);
+        goto out_free_list;
     }
 
     ARRAY_FOR_EACH(interp->iter_vals, it) {
@@ -6597,9 +7519,29 @@ static Julie_Status julie_builtin_insert(Julie_Interp *interp, Julie_Value *expr
             *result = NULL;
             status  = JULIE_ERR_MODIFY_WHILE_ITER;
             julie_make_bind_error(interp, expr, status, values[0]->type == JULIE_SYMBOL ? values[0]->string_id : NULL);
-            julie_free_value(interp, val);
-            goto out_free;
+            goto out_free_list;
         }
+    }
+
+    status = julie_eval_no_throw(interp, values[1], &val);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        goto out_free_list;
+    }
+
+    status = julie_eval(interp, values[2], &idx);
+    if (status != JULIE_SUCCESS) {
+        *result = NULL;
+        julie_free_value(interp, val);
+        goto out_free_list;
+    }
+
+    if (!JULIE_TYPE_IS_INTEGER(idx->type)) {
+        *result = NULL;
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[2], _JULIE_INTEGER, idx->type);
+        julie_free_value(interp, val);
+        goto out_free_list;
     }
 
     if (val->owned || val->source_node) {
@@ -6622,7 +7564,7 @@ static Julie_Status julie_builtin_insert(Julie_Interp *interp, Julie_Value *expr
         status = JULIE_ERR_BAD_INDEX;
         julie_make_bad_index_error(interp, idx, idx);
         julie_free_value(interp, val);
-        goto out_free;
+        goto out_free_list_idx;
     }
 
     JULIE_ASSERT(!val->owned);
@@ -6631,9 +7573,10 @@ static Julie_Status julie_builtin_insert(Julie_Interp *interp, Julie_Value *expr
 
     *result = julie_nil_value(interp);
 
-out_free:;
-    julie_free_value(interp, list);
+out_free_list_idx:;
     julie_free_value(interp, idx);
+out_free_list:;
+    julie_free_value(interp, list);
 
 out:;
     return status;
@@ -7048,7 +7991,7 @@ static Julie_Status julie_builtin_sorted_insert(Julie_Interp *interp, Julie_Valu
         goto out_free_list;
     }
 
-    status = julie_eval(interp, values[1], &val);
+    status = julie_eval_no_throw(interp, values[1], &val);
     if (status != JULIE_SUCCESS) {
         *result = NULL;
         goto out_free_list;
@@ -7193,6 +8136,502 @@ out:;
     return status;
 }
 
+static Julie_Status julie_builtin_map(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *fn;
+    Julie_Value  *list;
+    Julie_Value  *mapped;
+    Julie_Value  *it;
+    Julie_Value  *ev;
+    Julie_Value  *cpy;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &fn);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &list);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, fn);
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_LIST, list->type);
+        goto out_free;
+    }
+
+    mapped = julie_list_value(interp);
+
+    JULIE_ARRAY_PUSH(interp->iter_vals, list);
+
+    ARRAY_FOR_EACH(list->list, it) {
+        status = julie_invoke(interp, values[0], fn, 1, &it, &ev);
+        if (status != JULIE_SUCCESS) {
+            julie_free_value(interp, mapped);
+            goto out_pop;
+        }
+        if (ev->owned || ev->source_node) {
+            cpy = julie_force_copy(interp, ev);
+            julie_free_value(interp, ev);
+            ev = cpy;
+        }
+        JULIE_ARRAY_PUSH(mapped->list, ev);
+    }
+
+    *result = mapped;
+
+out_pop:;
+    julie_array_pop(interp->iter_vals);
+
+out_free:;
+    julie_free_value(interp, list);
+    julie_free_value(interp, fn);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_filter(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *fn;
+    Julie_Value  *list;
+    Julie_Value  *filtered;
+    Julie_Value  *it;
+    Julie_Value  *ev;
+    unsigned      truth;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &fn);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &list);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, fn);
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_LIST, list->type);
+        goto out_free;
+    }
+
+    filtered = julie_list_value(interp);
+
+    JULIE_ARRAY_PUSH(interp->iter_vals, list);
+
+    ARRAY_FOR_EACH(list->list, it) {
+        status = julie_invoke(interp, values[0], fn, 1, &it, &ev);
+        if (status != JULIE_SUCCESS) {
+            julie_free_value(interp, filtered);
+            goto out_pop;
+        }
+        if (!JULIE_TYPE_IS_INTEGER(ev->type)) {
+            status = JULIE_ERR_TYPE;
+            julie_make_type_error(interp, ev, _JULIE_INTEGER, ev->type);
+            julie_free_value(interp, ev);
+            julie_free_value(interp, filtered);
+            goto out_pop;
+        }
+
+        truth = (ev->type == JULIE_SINT)
+                    ? !!ev->sint
+                    : !!ev->uint;
+
+        julie_free_value(interp, ev);
+
+        if (truth) {
+            JULIE_ARRAY_PUSH(filtered->list, julie_force_copy(interp, it));
+        }
+    }
+
+    *result = filtered;
+
+out_pop:;
+    julie_array_pop(interp->iter_vals);
+
+out_free:;
+    julie_free_value(interp, list);
+    julie_free_value(interp, fn);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_reduce(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *fn;
+    Julie_Value  *acc;
+    Julie_Value  *list;
+    Julie_Value  *it;
+    Julie_Value  *arg_pass[2];
+    Julie_Value  *ev;
+
+    *result = NULL;
+
+    if (n_values != 3) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 3, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &fn);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &acc);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, fn);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[2], &list);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, acc);
+        julie_free_value(interp, fn);
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[2], JULIE_LIST, list->type);
+        goto out_free;
+    }
+
+    JULIE_ARRAY_PUSH(interp->iter_vals, list);
+
+    ARRAY_FOR_EACH(list->list, it) {
+        arg_pass[0] = acc;
+        arg_pass[1] = it;
+        status = julie_invoke(interp, values[0], fn, 2, arg_pass, &ev);
+        if (status != JULIE_SUCCESS) {
+            julie_free_value(interp, acc);
+            goto out_pop;
+        }
+        if (ev != acc) {
+            julie_free_value(interp, acc);
+            acc = ev;
+        }
+    }
+
+    *result = acc;
+
+out_pop:;
+    julie_array_pop(interp->iter_vals);
+
+out_free:;
+    julie_free_value(interp, list);
+    julie_free_value(interp, fn);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_reverse(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *list;
+    Julie_Value  *rev;
+    long long     i;
+    Julie_Value  *it;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &list);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_LIST, list->type);
+        julie_free_value(interp, list);
+        goto out;
+    }
+
+    rev = julie_list_value(interp);
+
+    for (i = (long long)julie_array_len(list->list) - 1; i >= 0; i -= 1) {
+        it = julie_array_elem(list->list, i);
+        JULIE_ARRAY_PUSH(rev->list, julie_force_copy(interp, it));
+    }
+
+    *result = rev;
+    julie_free_value(interp, list);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_any(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *fn;
+    Julie_Value  *list;
+    Julie_Value  *it;
+    Julie_Value  *ev;
+    unsigned      truth;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &fn);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &list);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, fn);
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_LIST, list->type);
+        goto out_free;
+    }
+
+    JULIE_ARRAY_PUSH(interp->iter_vals, list);
+
+    ARRAY_FOR_EACH(list->list, it) {
+        status = julie_invoke(interp, values[0], fn, 1, &it, &ev);
+        if (status != JULIE_SUCCESS) {
+            goto out_pop;
+        }
+        if (!JULIE_TYPE_IS_INTEGER(ev->type)) {
+            status = JULIE_ERR_TYPE;
+            julie_make_type_error(interp, ev, _JULIE_INTEGER, ev->type);
+            julie_free_value(interp, ev);
+            goto out_pop;
+        }
+        truth = (ev->type == JULIE_SINT) ? !!ev->sint : !!ev->uint;
+        julie_free_value(interp, ev);
+        if (truth) {
+            *result = julie_sint_value(interp, 1);
+            goto out_pop;
+        }
+    }
+
+    *result = julie_sint_value(interp, 0);
+
+out_pop:;
+    julie_array_pop(interp->iter_vals);
+
+out_free:;
+    julie_free_value(interp, list);
+    julie_free_value(interp, fn);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_all(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *fn;
+    Julie_Value  *list;
+    Julie_Value  *it;
+    Julie_Value  *ev;
+    unsigned      truth;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &fn);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &list);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, fn);
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_LIST, list->type);
+        goto out_free;
+    }
+
+    JULIE_ARRAY_PUSH(interp->iter_vals, list);
+
+    ARRAY_FOR_EACH(list->list, it) {
+        status = julie_invoke(interp, values[0], fn, 1, &it, &ev);
+        if (status != JULIE_SUCCESS) {
+            goto out_pop;
+        }
+        if (!JULIE_TYPE_IS_INTEGER(ev->type)) {
+            status = JULIE_ERR_TYPE;
+            julie_make_type_error(interp, ev, _JULIE_INTEGER, ev->type);
+            julie_free_value(interp, ev);
+            goto out_pop;
+        }
+        truth = (ev->type == JULIE_SINT) ? !!ev->sint : !!ev->uint;
+        julie_free_value(interp, ev);
+        if (!truth) {
+            *result = julie_sint_value(interp, 0);
+            goto out_pop;
+        }
+    }
+
+    *result = julie_sint_value(interp, 1);
+
+out_pop:;
+    julie_array_pop(interp->iter_vals);
+
+out_free:;
+    julie_free_value(interp, list);
+    julie_free_value(interp, fn);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_zip(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status        status;
+    Julie_Value        *a;
+    Julie_Value        *b;
+    Julie_Value        *zipped;
+    Julie_Value        *pair;
+    unsigned long long  i;
+    unsigned long long  len;
+    Julie_Value        *ea;
+    Julie_Value        *eb;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &a);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &b);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, a);
+        goto out;
+    }
+
+    if (a->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_LIST, a->type);
+        goto out_free;
+    }
+
+    if (b->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_LIST, b->type);
+        goto out_free;
+    }
+
+    len = julie_array_len(a->list);
+    if (julie_array_len(b->list) < len) {
+        len = julie_array_len(b->list);
+    }
+
+    zipped = julie_list_value(interp);
+
+    for (i = 0; i < len; i += 1) {
+        ea   = julie_array_elem(a->list, i);
+        eb   = julie_array_elem(b->list, i);
+        pair = julie_list_value(interp);
+        JULIE_ARRAY_PUSH(pair->list, julie_force_copy(interp, ea));
+        JULIE_ARRAY_PUSH(pair->list, julie_force_copy(interp, eb));
+        JULIE_ARRAY_PUSH(zipped->list, pair);
+    }
+
+    *result = zipped;
+
+out_free:;
+    julie_free_value(interp, a);
+    julie_free_value(interp, b);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_concat(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *out_list;
+    unsigned      i;
+    Julie_Value  *ev;
+    Julie_Value  *it;
+
+    (void)expr;
+
+    status   = JULIE_SUCCESS;
+    out_list = julie_list_value(interp);
+
+    for (i = 0; i < n_values; i += 1) {
+        status = julie_eval(interp, values[i], &ev);
+        if (status != JULIE_SUCCESS) {
+            julie_free_value(interp, out_list);
+            *result = NULL;
+            goto out;
+        }
+
+        if (ev->type != JULIE_LIST) {
+            status = JULIE_ERR_TYPE;
+            julie_make_type_error(interp, values[i], JULIE_LIST, ev->type);
+            julie_free_value(interp, ev);
+            julie_free_value(interp, out_list);
+            *result = NULL;
+            goto out;
+        }
+
+        ARRAY_FOR_EACH(ev->list, it) {
+            JULIE_ARRAY_PUSH(out_list->list, julie_force_copy(interp, it));
+        }
+
+        julie_free_value(interp, ev);
+    }
+
+    *result = out_list;
+
+out:;
+    return status;
+}
+
 static Julie_Status julie_builtin_pair(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status  status;
     Julie_Value  *first;
@@ -7208,12 +8647,12 @@ static Julie_Status julie_builtin_pair(Julie_Interp *interp, Julie_Value *expr, 
         goto out;
     }
 
-    status = julie_eval(interp, values[0], &first);
+    status = julie_eval_no_throw(interp, values[0], &first);
     if (status != JULIE_SUCCESS) {
         goto out;
     }
 
-    status = julie_eval(interp, values[1], &second);
+    status = julie_eval_no_throw(interp, values[1], &second);
     if (status != JULIE_SUCCESS) {
         julie_free_value(interp, first);
         goto out;
@@ -7311,7 +8750,7 @@ check_for_rewritten:;
                 goto out_free_object;
             }
 
-            status = julie_eval(interp, julie_array_elem(it->list, val_idx), &val);
+            status = julie_eval_no_throw(interp, julie_array_elem(it->list, val_idx), &val);
             if (status != JULIE_SUCCESS) {
                 julie_free_value(interp, key);
                 goto out_free_object;
@@ -7433,7 +8872,7 @@ static Julie_Status _julie_builtin_field(Julie_Interp *interp, Julie_Value *expr
 
     if (!JULIE_TYPE_IS_KEYLIKE(key->type)) {
         status = JULIE_ERR_TYPE;
-        julie_make_type_error(interp, key, _JULIE_KEYLIKE, key->type);
+        julie_make_type_error(interp, values[0], _JULIE_KEYLIKE, key->type);
         *result = NULL;
         goto out_free_key;
     }
@@ -7442,7 +8881,7 @@ static Julie_Status _julie_builtin_field(Julie_Interp *interp, Julie_Value *expr
 
     if (field == NULL) {
         status = JULIE_ERR_BAD_INDEX;
-        julie_make_bad_index_error(interp, key, key);
+        julie_make_bad_index_error(interp, values[0], key);
         *result = NULL;
         goto out_free_key;
     } else {
@@ -7675,13 +9114,13 @@ static Julie_Status julie_builtin_get_or_insert_field(Julie_Interp *interp, Juli
     lookup = julie_object_get_field(o, key);
 
     if (lookup != NULL) {
+        lookup->owned = o->owned;
         *result = julie_copy(interp, lookup);
-        (*result)->owned = o->owned;
         goto out_free;
     }
 
 
-    status = julie_eval(interp, values[2], &val);
+    status = julie_eval_no_throw(interp, values[2], &val);
     if (status != JULIE_SUCCESS) {
         *result = NULL;
         julie_free_value(interp, key);
@@ -7932,8 +9371,21 @@ static Julie_Status julie_builtin_new_instance(Julie_Interp *interp, Julie_Value
         key = key->source_node ? key : julie_force_copy(interp, key);
         val = julie_force_copy(interp, val);
 
-        julie_object_insert_field(interp, object, key, val, NULL);
+        status = julie_object_insert_field(interp, object, key, val, NULL);
+        if (status != JULIE_SUCCESS) {
+            julie_free_value(interp, key);
+            julie_free_value(interp, val);
+            julie_free_value(interp, class);
+            if (status == JULIE_ERR_RELEASE_WHILE_BORROWED) {
+                julie_make_bind_error(interp, expr, JULIE_ERR_RELEASE_WHILE_BORROWED, NULL);
+            } else {
+                julie_make_interp_error(interp, expr, JULIE_ERR_RELEASE_WHILE_BORROWED);
+            }
+            goto out;
+        }
     }
+
+    julie_free_value(interp, class);
 
     *result = object;
 
@@ -8230,7 +9682,7 @@ static Julie_Status julie_builtin_select(Julie_Interp *interp, Julie_Value *expr
 
 
     then   = values[1 + (truth == 0)];
-    status = julie_eval(interp, then, &then);
+    status = julie_eval_no_throw(interp, then, &then);
     if (status != JULIE_SUCCESS) {
         *result = NULL;
         goto out_free_cond;
@@ -8262,8 +9714,14 @@ static Julie_Status julie_builtin_do(Julie_Interp *interp, Julie_Value *expr, un
     }
 
     for (i = 0; i < n_values; i += 1) {
-        it     = values[i];
-        status = julie_eval(interp, it, &ev);
+        it = values[i];
+
+        if (i == n_values - 1) {
+            status = julie_eval_no_throw(interp, it, &ev);
+        } else {
+            status = julie_eval(interp, it, &ev);
+        }
+
         if (status != JULIE_SUCCESS) {
             if (*result != NULL) {
                 julie_free_value(interp, *result);
@@ -8329,8 +9787,14 @@ static Julie_Status julie_builtin_if(Julie_Interp *interp, Julie_Value *expr, un
 
     if (truth) {
         for (i = 1; i < n_values; i += 1) {
-            it     = values[i];
-            status = julie_eval(interp, it, &ev);
+            it = values[i];
+
+            if (i == n_values - 1) {
+                status = julie_eval_no_throw(interp, it, &ev);
+            } else {
+                status = julie_eval(interp, it, &ev);
+            }
+
             if (status != JULIE_SUCCESS) {
                 if (*result != NULL) {
                     julie_free_value(interp, *result);
@@ -8412,8 +9876,14 @@ static Julie_Status julie_builtin_elif(Julie_Interp *interp, Julie_Value *expr, 
 
         if (truth) {
             for (i = 1; i < n_values; i += 1) {
-                it     = values[i];
-                status = julie_eval(interp, it, &ev);
+                it = values[i];
+
+                if (i == n_values - 1) {
+                    status = julie_eval_no_throw(interp, it, &ev);
+                } else {
+                    status = julie_eval(interp, it, &ev);
+                }
+
                 if (status != JULIE_SUCCESS) {
                     if (*result != NULL) {
                         julie_free_value(interp, *result);
@@ -8470,8 +9940,14 @@ static Julie_Status julie_builtin_else(Julie_Interp *interp, Julie_Value *expr, 
 
     if (!interp->last_if_was_true) {
         for (i = 0; i < n_values; i += 1) {
-            it     = values[i];
-            status = julie_eval(interp, it, &ev);
+            it = values[i];
+
+            if (i == n_values - 1) {
+                status = julie_eval_no_throw(interp, it, &ev);
+            } else {
+                status = julie_eval(interp, it, &ev);
+            }
+
             if (status != JULIE_SUCCESS) {
                 if (*result != NULL) {
                     julie_free_value(interp, *result);
@@ -8558,8 +10034,14 @@ static Julie_Status julie_builtin_while(Julie_Interp *interp, Julie_Value *expr,
         }
 
         for (i = 1; i < n_values; i += 1) {
-            _val  = values[i];
-            status = julie_eval(interp, _val, &val);
+            _val = values[i];
+
+            if (i < n_values - 1) {
+                status = julie_eval(interp, _val, &val);
+            } else {
+                status = julie_eval_no_throw(interp, _val, &val);
+            }
+
             if (status != JULIE_SUCCESS) {
                 *result = NULL;
                 goto out;
@@ -8642,8 +10124,14 @@ static Julie_Status julie_builtin_repeat(Julie_Interp *interp, Julie_Value *expr
         }
 
         for (j = 1; j < n_values; j += 1) {
-            _val  = values[j];
-            status = julie_eval(interp, _val, &val);
+            _val = values[j];
+
+            if (j < n_values - 1) {
+                status = julie_eval(interp, _val, &val);
+            } else {
+                status = julie_eval_no_throw(interp, _val, &val);
+            }
+
             if (status != JULIE_SUCCESS) {
                 *result = NULL;
                 goto out_unbind;
@@ -8762,13 +10250,19 @@ static Julie_Status julie_builtin_foreach(Julie_Interp *interp, Julie_Value *exp
                 goto out_pop;
             }
 
-            JULIE_BORROW_NO_CHECK(it);
+            JULIE_BORROW_NO_CHECK(bound);
 
             for (j = 2; j < n_values; j += 1) {
-                val    = values[j];
-                status = julie_eval(interp, val, &ev);
+                val = values[j];
+
+                if (j < n_values - 1) {
+                    status = julie_eval(interp, val, &ev);
+                } else {
+                    status = julie_eval_no_throw(interp, val, &ev);
+                }
+
                 if (status != JULIE_SUCCESS) {
-                    JULIE_UNBORROW(it);
+                    JULIE_UNBORROW(bound);
                     if (interp->local_symtab_depth == 0) {
                         julie_unbind(interp, id);
                     } else {
@@ -8797,7 +10291,7 @@ static Julie_Status julie_builtin_foreach(Julie_Interp *interp, Julie_Value *exp
                 julie_free_value(interp, ev);
             }
 
-            JULIE_UNBORROW_NO_CHECK(it);
+            JULIE_UNBORROW_NO_CHECK(bound);
 
             if (interp->local_symtab_depth == 0) {
                 status = julie_unbind(interp, id);
@@ -8842,13 +10336,19 @@ static Julie_Status julie_builtin_foreach(Julie_Interp *interp, Julie_Value *exp
                 goto out_pop;
             }
 
-            JULIE_BORROW_NO_CHECK(it);
+            JULIE_BORROW_NO_CHECK(bound);
 
             for (j = 2; j < n_values; j += 1) {
-                val    = values[j];
-                status = julie_eval(interp, val, &ev);
+                val = values[j];
+
+                if (j < n_values - 1) {
+                    status = julie_eval(interp, val, &ev);
+                } else {
+                    status = julie_eval_no_throw(interp, val, &ev);
+                }
+
                 if (status != JULIE_SUCCESS) {
-                    JULIE_UNBORROW(it);
+                    JULIE_UNBORROW(bound);
                     if (interp->local_symtab_depth == 0) {
                         julie_unbind(interp, id);
                     } else {
@@ -8878,7 +10378,7 @@ static Julie_Status julie_builtin_foreach(Julie_Interp *interp, Julie_Value *exp
                 julie_free_value(interp, ev);
             }
 
-            JULIE_UNBORROW_NO_CHECK(it);
+            JULIE_UNBORROW_NO_CHECK(bound);
 
             if (interp->local_symtab_depth == 0) {
                 status = julie_unbind(interp, id);
@@ -8966,7 +10466,12 @@ static Julie_Status julie_builtin_match(Julie_Interp *interp, Julie_Value *expr,
         if (!equ) { continue; }
 
         for (j = 1; j < julie_array_len(list->list); j += 1) {
-            status = julie_eval(interp, julie_array_elem(list->list, j), result);
+            if (j < julie_array_len(list->list) - 1) {
+                status = julie_eval(interp, julie_array_elem(list->list, j), result);
+            } else {
+                status = julie_eval_no_throw(interp, julie_array_elem(list->list, j), result);
+            }
+
             if (status != JULIE_SUCCESS) {
                 *result = NULL;
                 goto out_free_val;
@@ -10024,6 +11529,231 @@ out:;
     return status;
 }
 
+static Julie_Status julie_builtin_join(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status        status;
+    Julie_Value        *list;
+    Julie_Value        *sep;
+    const char         *csep;
+    unsigned long long  sep_len;
+    char               *str;
+    unsigned long long  str_len;
+    Julie_Value        *it;
+    const char         *cs;
+    unsigned long long  cs_len;
+    int                 first;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &list);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &sep);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, list);
+        goto out;
+    }
+
+    if (list->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_LIST, list->type);
+        goto out_free;
+    }
+
+    if (sep->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_STRING, sep->type);
+        goto out_free;
+    }
+
+    csep    = julie_value_cstring(sep);
+    sep_len = sep->tag == JULIE_STRING_TYPE_INTERN
+                ? julie_get_string(interp, sep->string_id)->len
+                : strlen(csep);
+
+    str     = malloc(1);
+    str[0]  = 0;
+    str_len = 0;
+    first   = 1;
+
+    ARRAY_FOR_EACH(list->list, it) {
+        if (it->type != JULIE_STRING) {
+            status = JULIE_ERR_TYPE;
+            julie_make_type_error(interp, it, JULIE_STRING, it->type);
+            free(str);
+            goto out_free;
+        }
+
+        cs     = julie_value_cstring(it);
+        cs_len = it->tag == JULIE_STRING_TYPE_INTERN
+                    ? julie_get_string(interp, it->string_id)->len
+                    : strlen(cs);
+
+        if (!first) {
+            str = realloc(str, str_len + sep_len + 1);
+            memcpy(str + str_len, csep, sep_len);
+            str_len += sep_len;
+            str[str_len] = 0;
+        }
+
+        str = realloc(str, str_len + cs_len + 1);
+        memcpy(str + str_len, cs, cs_len);
+        str_len += cs_len;
+        str[str_len] = 0;
+
+        first = 0;
+    }
+
+    *result = julie_string_value_giveaway(interp, str);
+
+out_free:;
+    julie_free_value(interp, list);
+    julie_free_value(interp, sep);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_upper(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *s;
+    char         *str;
+    char         *p;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &s);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (s->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, s->type);
+        julie_free_value(interp, s);
+        goto out;
+    }
+
+    str = strdup(julie_value_cstring(s));
+    for (p = str; *p; p += 1) {
+        if (*p >= 'a' && *p <= 'z') { *p -= 32; }
+    }
+
+    *result = julie_string_value_giveaway(interp, str);
+    julie_free_value(interp, s);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_lower(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *s;
+    char         *str;
+    char         *p;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &s);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (s->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, s->type);
+        julie_free_value(interp, s);
+        goto out;
+    }
+
+    str = strdup(julie_value_cstring(s));
+    for (p = str; *p; p += 1) {
+        if (*p >= 'A' && *p <= 'Z') { *p += 32; }
+    }
+
+    *result = julie_string_value_giveaway(interp, str);
+    julie_free_value(interp, s);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_sfind(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *haystack;
+    Julie_Value  *needle;
+    const char   *h;
+    const char   *n;
+    const char   *found;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &haystack);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (haystack->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, haystack->type);
+        julie_free_value(interp, haystack);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &needle);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, haystack);
+        goto out;
+    }
+
+    if (needle->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_STRING, needle->type);
+        julie_free_value(interp, haystack);
+        julie_free_value(interp, needle);
+        goto out;
+    }
+
+    h     = julie_value_cstring(haystack);
+    n     = julie_value_cstring(needle);
+    found = strstr(h, n);
+
+    *result = found != NULL
+                ? julie_sint_value(interp, found - h)
+                : julie_nil_value(interp);
+
+    julie_free_value(interp, haystack);
+    julie_free_value(interp, needle);
+
+out:;
+    return status;
+}
+
 static Julie_Status julie_builtin_regex_match(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     int              status;
     Julie_Value     *s;
@@ -10141,6 +11871,10 @@ static Julie_Status julie_builtin_fopen_wr(Julie_Interp *interp, Julie_Value *ex
     return _julie_builtin_fopen(interp, expr, n_values, values, result, "w");
 }
 
+static Julie_Status julie_builtin_fopen_ap(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    return _julie_builtin_fopen(interp, expr, n_values, values, result, "a");
+}
+
 static Julie_Status julie_builtin_fclose(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status  status;
     Julie_Value  *file;
@@ -10210,6 +11944,82 @@ static Julie_Status julie_builtin_frewind(Julie_Interp *interp, Julie_Value *exp
 
     rewind(f);
     *result = julie_sint_value(interp, 0);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_fread(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *file;
+    Julie_Value  *nv;
+    Julie_Value  *key;
+    Julie_Value  *handle;
+    FILE         *f;
+    long long     n;
+    char         *buf;
+    size_t        r;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &file);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (file->type != JULIE_OBJECT) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_OBJECT, file->type);
+        julie_free_value(interp, file);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &nv);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, file);
+        goto out;
+    }
+
+    if (!JULIE_TYPE_IS_INTEGER(nv->type)) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], _JULIE_INTEGER, nv->type);
+        julie_free_value(interp, file);
+        julie_free_value(interp, nv);
+        goto out;
+    }
+
+    key    = julie_symbol_value(interp, julie_get_string_id(interp, "'__handle__"));
+    handle = julie_object_get_field(file, key);
+    julie_free_value(interp, key);
+
+    f = (handle != NULL && handle->type == JULIE_UINT) ? (void*)handle->uint : NULL;
+    n = (nv->type == JULIE_SINT) ? nv->sint : (long long)nv->uint;
+
+    julie_free_value(interp, file);
+    julie_free_value(interp, nv);
+
+    if (f == NULL || n <= 0) {
+        *result = julie_nil_value(interp);
+        goto out;
+    }
+
+    buf = malloc(n);
+    r   = fread(buf, 1, (size_t)n, f);
+
+    if (r == 0) {
+        free(buf);
+        *result = julie_nil_value(interp);
+        goto out;
+    }
+
+    *result = julie_string_value_known_size(interp, buf, r);
+    free(buf);
 
 out:;
     return status;
@@ -10374,6 +12184,118 @@ out:;
 }
 
 
+static Julie_Status julie_builtin_fexists(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *pathv;
+    const char   *path;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &pathv);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (pathv->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, pathv->type);
+        julie_free_value(interp, pathv);
+        goto out;
+    }
+
+    path    = julie_value_cstring(pathv);
+    *result = julie_sint_value(interp, access(path, F_OK) == 0);
+
+    julie_free_value(interp, pathv);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_fremove(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *pathv;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &pathv);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (pathv->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, pathv->type);
+        julie_free_value(interp, pathv);
+        goto out;
+    }
+
+    *result = julie_sint_value(interp, remove(julie_value_cstring(pathv)) == 0);
+    julie_free_value(interp, pathv);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_frename(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *oldv;
+    Julie_Value  *newv;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &oldv);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (oldv->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, oldv->type);
+        julie_free_value(interp, oldv);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &newv);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, oldv);
+        goto out;
+    }
+
+    if (newv->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_STRING, newv->type);
+        julie_free_value(interp, oldv);
+        julie_free_value(interp, newv);
+        goto out;
+    }
+
+    *result = julie_sint_value(interp, rename(julie_value_cstring(oldv), julie_value_cstring(newv)) == 0);
+    julie_free_value(interp, oldv);
+    julie_free_value(interp, newv);
+
+out:;
+    return status;
+}
+
 static Julie_Status julie_builtin_backtrace(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     int                    status;
     unsigned long long     i;
@@ -10411,18 +12333,34 @@ out:;
     return status;
 }
 
-static Julie_Status julie_parse_roots(Julie_Interp *interp, Julie_Array **rootsp, const char *str, int size, unsigned long long *err_line, unsigned long long *err_col, int temporary);
+static void julie_sandbox_error_handler(Julie_Error_Info *info) {
+    char        *s;
+    Julie_Value *error_value;
 
-static Julie_Status julie_builtin_eval(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
-    Julie_Status        status;
-    Julie_Value        *code;
-    const char         *code_string;
-    unsigned long long  code_len;
-    Julie_String_ID     save_cur_file;
-    Julie_Array        *roots = JULIE_ARRAY_INIT;
-    unsigned long long  err_line;
-    unsigned long long  err_col;
-    Julie_Value        *it;
+    if (info->status != JULIE_ERR_ERROR_VALUE) {
+        s = julie_get_pretty_error_string(info, "", "", "");
+        error_value = julie_error_value(info->interp, s);
+        free(s);
+        julie_free_error_info(info);
+        info->status = JULIE_ERR_ERROR_VALUE;
+        info->thrown.error_value = error_value;
+    }
+    memcpy(&info->interp->sandbox_error_info, info, sizeof(info->interp->sandbox_error_info));
+}
+
+static Julie_Status julie_builtin_parse_julie(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status          status;
+    Julie_Value          *code;
+    const char           *code_cstr;
+    unsigned long long    code_len;
+    Julie_Error_Callback  save_err_callback;
+    Julie_String_ID       save_file;
+    Julie_Array          *roots = JULIE_ARRAY_INIT;
+    unsigned long long    err_line;
+    unsigned long long    err_col;
+    Julie_Value          *it;
+    Julie_Value          *do_list;
+    Julie_Value          *do_sym;
 
     *result = NULL;
 
@@ -10433,10 +12371,7 @@ static Julie_Status julie_builtin_eval(Julie_Interp *interp, Julie_Value *expr, 
     }
 
     status = julie_eval(interp, values[0], &code);
-    if (status != JULIE_SUCCESS) {
-        *result = NULL;
-        goto out;
-    }
+    if (status != JULIE_SUCCESS) { goto out; }
 
     if (code->type != JULIE_STRING) {
         status = JULIE_ERR_TYPE;
@@ -10444,189 +12379,245 @@ static Julie_Status julie_builtin_eval(Julie_Interp *interp, Julie_Value *expr, 
         goto out_free_code;
     }
 
-    code_string = julie_value_cstring(code);
+    code_cstr = julie_value_cstring(code);
+    code_len  = code->tag == JULIE_STRING_TYPE_INTERN
+                    ? julie_get_string(interp, code->string_id)->len
+                    : strlen(code_cstr);
 
-    code_len = code->tag == JULIE_STRING_TYPE_INTERN
-                ? julie_get_string(interp, code->string_id)->len
-                : strlen(code_string);
+    save_err_callback = interp->error_callback;
+    save_file         = interp->cur_file_id;
 
-    save_cur_file = interp->cur_file_id;
-    julie_set_cur_file(interp, julie_get_string_id(interp, "<eval>"));
+    julie_set_cur_file(interp, julie_get_string_id(interp, "<parse-julie>"));
+    interp->error_callback = julie_sandbox_error_handler;
 
-    status = julie_parse_roots(interp, &roots, code_string, (int)code_len, &err_line, &err_col, 1);
-
-    julie_set_cur_file(interp, save_cur_file);
+    status = julie_parse_roots(interp, &roots, code_cstr, (int)code_len, &err_line, &err_col, 1);
 
     if (status != JULIE_SUCCESS) {
-        *result = NULL;
         julie_make_parse_error(interp, err_line, err_col, status);
-        goto out_free_roots;
+        status = JULIE_SUCCESS;
+        *result = julie_force_copy(interp, interp->sandbox_error_info.thrown.error_value);
+        julie_free_error_info(&interp->sandbox_error_info);
+        memset(&interp->sandbox_error_info, 0, sizeof(interp->sandbox_error_info));
+        goto out_restore;
     }
 
-    *result = NULL;
-    ARRAY_FOR_EACH(roots, it) {
-        if (*result != NULL) {
-            julie_free_value(interp, *result);
-            *result = NULL;
-        }
-
-        status = julie_eval(interp, it, result);
-
-        if (status != JULIE_SUCCESS) {
-            *result = NULL;
-            goto out_free_roots;
-        }
-    }
-
-    if (*result != NULL) {
-        if ((*result)->source_node) {
-            *result = julie_force_copy(interp, *result);
-        }
+    if (julie_array_len(roots) == 1) {
+        *result = julie_array_elem(roots, 0);
     } else {
-        *result = julie_nil_value(interp);
+        do_list = julie_list_value(interp);
+        do_sym  = julie_symbol_value(interp, julie_get_string_id(interp, "do"));
+        JULIE_ARRAY_PUSH(do_list->list, do_sym);
+        ARRAY_FOR_EACH(roots, it) {
+            JULIE_ARRAY_PUSH(do_list->list, it);
+        }
+        *result = do_list;
     }
 
-out_free_roots:;
-    ARRAY_FOR_EACH(roots, it) {
-        julie_free_source_node(interp, it);
-    }
+    julie_array_free(roots);
+    roots = JULIE_ARRAY_INIT;
+
+out_restore:;
+    interp->error_callback = save_err_callback;
+    interp->cur_file_id    = save_file;
+
     julie_array_free(roots);
 
 out_free_code:;
     julie_free_value(interp, code);
 
 out:;
+    return status;
+}
+
+static Julie_Status julie_parse_sandbox_config(Julie_Interp *interp, Julie_Value *expr, Julie_Value *config, Julie_Value **out_bindings, Julie_Value **out_blacklist) {
+    Julie_Value  *key;
+    Julie_Value **lookup;
+
+    *out_bindings  = NULL;
+    *out_blacklist = NULL;
+
+    if (config == NULL) { return JULIE_SUCCESS; }
+
+    key    = julie_symbol_value(interp, julie_get_string_id(interp, "'bindings"));
+    lookup = hash_table_get_val((_Julie_Object)config->object, key);
+    julie_free_value(interp, key);
+    if (lookup != NULL) {
+        if ((*lookup)->type != JULIE_OBJECT) {
+            julie_make_type_error(interp, expr, JULIE_OBJECT, (*lookup)->type);
+            return JULIE_ERR_TYPE;
+        }
+        *out_bindings = julie_copy(interp, *lookup);
+    }
+
+    key    = julie_symbol_value(interp, julie_get_string_id(interp, "'blacklist"));
+    lookup = hash_table_get_val((_Julie_Object)config->object, key);
+    julie_free_value(interp, key);
+    if (lookup != NULL) {
+        if ((*lookup)->type != JULIE_LIST) {
+            if (*out_bindings) { julie_free_value(interp, *out_bindings); *out_bindings = NULL; }
+            julie_make_type_error(interp, expr, JULIE_LIST, (*lookup)->type);
+            return JULIE_ERR_TYPE;
+        }
+        *out_blacklist = julie_copy(interp, *lookup);
+    }
+
     return JULIE_SUCCESS;
 }
 
-static void julie_sandbox_error_handler(Julie_Error_Info *info) {
-    memcpy(&info->interp->sandbox_error_info, info, sizeof(info->interp->sandbox_error_info));
+static int julie_is_blacklisted(const char *name, Julie_Value *blacklist) {
+    Julie_Value *it;
+
+    if (blacklist == NULL) { return 0; }
+
+    ARRAY_FOR_EACH(blacklist->list, it) {
+        if ((it->type == JULIE_STRING || it->type == JULIE_SYMBOL)
+        &&  strcmp(julie_value_cstring(it), name) == 0) {
+
+            return 1;
+        }
+    }
+    return 0;
 }
 
-static char *julie_get_sandbox_error_string(Julie_Error_Info *info) {
-    char                  *message;
-    int                    size;
-    char                  *s;
-    unsigned               i;
-    Julie_Backtrace_Entry *it;
+static Julie_Array *julie_detach_bindings_from_object(Julie_Value *obj) {
+    Julie_Array             *ret = JULIE_ARRAY_INIT;
+    Julie_Value             *sym;
+    Julie_Value            **valp;
+    Julie_Detached_Binding  *new_binding;
 
-    message    = malloc(64);
-    message[0] = 0;
-    size       = 64;
+    hash_table_traverse((_Julie_Object)obj->object, sym, valp) {
+        if (sym->type != JULIE_SYMBOL && sym->type != JULIE_STRING) { continue; }
 
-#define P(_fmt, ...)                                                                                      \
-do {                                                                                                      \
-    char *write_to = message + strlen(message);                                                           \
-    while ((size_t)snprintf(write_to, size - strlen(message), (_fmt), __VA_ARGS__) >= (size - strlen(message))) { \
-        size += 64;                                                                                       \
-        int off = (write_to - message);                                                                   \
-        message = realloc(message, size);                                                                 \
-        write_to = message + off;                                                                         \
-    }                                                                                                     \
-} while (0)
+        new_binding        = malloc(sizeof(*new_binding));
+        new_binding->name  = strdup(julie_value_cstring(sym));
+        new_binding->value = julie_detach_value(*valp);
 
-    P("%llu:%llu: error: %s",
-            info->line,
-            info->col,
-            julie_error_string(info->status));
-
-    switch (info->status) {
-        case JULIE_ERR_LOOKUP:
-            if (info->lookup.sym != NULL) {
-                P(" (%s)", info->lookup.sym);
-            }
-            break;
-        case JULIE_ERR_RELEASE_WHILE_BORROWED:
-            if (info->release_while_borrowed.sym != NULL) {
-                P(" (%s)", info->release_while_borrowed.sym);
-            }
-            break;
-        case JULIE_ERR_REF_OF_TRANSIENT:
-            if (info->ref_of_transient.sym != NULL) {
-                P(" (%s)", info->ref_of_transient.sym);
-            }
-            break;
-        case JULIE_ERR_REF_OF_OBJECT_KEY:
-            if (info->ref_of_object_key.sym != NULL) {
-                P(" (%s)", info->ref_of_object_key.sym);
-            }
-            break;
-        case JULIE_ERR_NOT_LVAL:
-            if (info->not_lval.sym != NULL) {
-                P(" (%s)", info->not_lval.sym);
-            }
-            break;
-        case JULIE_ERR_MODIFY_WHILE_ITER:
-            if (info->modify_while_iter.sym != NULL) {
-                P(" (%s)", info->modify_while_iter.sym);
-            }
-            break;
-        case JULIE_ERR_ARITY:
-            P(" (wanted %s%llu, got %llu)",
-                    info->arity.at_least ? "at least " : "",
-                    info->arity.wanted_arity,
-                    info->arity.got_arity);
-            break;
-        case JULIE_ERR_TYPE:
-            P(" (wanted %s, got %s)",
-                    julie_type_string(info->type.wanted_type),
-                    julie_type_string(info->type.got_type));
-            break;
-        case JULIE_ERR_BAD_APPLY:
-            P(" (got %s)", julie_type_string(info->bad_application.got_type));
-            break;
-        case JULIE_ERR_BAD_INDEX:
-            s = julie_to_string(info->interp, info->bad_index.bad_index, 0);
-            P(" (index: %s)", s);
-            free(s);
-            break;
-        case JULIE_ERR_FILE_NOT_FOUND:
-        case JULIE_ERR_FILE_IS_DIR:
-        case JULIE_ERR_MMAP_FAILED:
-            P(" (%s)", info->file.path);
-            break;
-        case JULIE_ERR_LOAD_PACKAGE_FAILURE:
-            P(" (%s) %s", info->load_package_failure.path, info->load_package_failure.package_error_message);
-            break;
-        case JULIE_ERR_REGEX:
-            P(" %s", info->regex.regex_error_message);
-            break;
-        default:
-            break;
+        JULIE_ARRAY_PUSH(ret, new_binding);
     }
 
-    i = 0;
-    while ((it = julie_bt_entry(info->interp, i)) != NULL) {
-        s = julie_to_string(info->interp, it->fn, 0);
-        P("    %llu:%llu %s\n",
-                it->line,
-                it->col,
-                s);
-        free(s);
-
-        i += 1;
-    }
-
-#undef P
-
-    return message;
+    return ret;
 }
+
+static Julie_Array *julie_detach_globals(Julie_Interp *interp, Julie_Value *blacklist) {
+    Julie_Array             *ret = JULIE_ARRAY_INIT;
+    Julie_Symbol_Table      *symtab;
+    unsigned                 i;
+    const char              *name;
+    Julie_Detached_Binding  *new_binding;
+    Julie_String_ID          sym;
+    Julie_Value            **valp;
+
+    symtab = interp->global_symtab;
+
+    if (symtab->expansion == NULL) {
+        for (i = 0; i < symtab->used; i += 1) {
+            name = julie_get_cstring(symtab->syms[i]);
+            if (julie_is_blacklisted(name, blacklist)) { continue; }
+
+            new_binding        = malloc(sizeof(*new_binding));
+            new_binding->name  = strdup(name);
+            new_binding->value = julie_detach_value(symtab->vals[i]);
+
+            JULIE_ARRAY_PUSH(ret, new_binding);
+        }
+    } else {
+        hash_table_traverse(symtab->expansion, sym, valp) {
+            name = julie_get_cstring(sym);
+            if (julie_is_blacklisted(name, blacklist)) { continue; }
+
+            new_binding        = malloc(sizeof(*new_binding));
+            new_binding->name  = strdup(name);
+            new_binding->value = julie_detach_value(*valp);
+
+            JULIE_ARRAY_PUSH(ret, new_binding);
+        }
+    }
+
+    return ret;
+}
+
+static void julie_configure_sandbox(Julie_Interp *sandbox, Julie_Interp *parent, const char *file_name) {
+    memset(&sandbox->sandbox_error_info, 0, sizeof(sandbox->sandbox_error_info));
+
+    if (parent->output_callback != NULL) {
+        julie_set_output_callback(sandbox, parent->output_callback);
+    }
+#ifdef JULIE_ENABLE_EVAL_CALLBACKS
+    if (parent->eval_callback != NULL) {
+        julie_set_eval_callback(sandbox, parent->eval_callback);
+    }
+    if (parent->post_eval_callback != NULL) {
+        julie_set_post_eval_callback(sandbox, parent->post_eval_callback);
+    }
+#endif
+    julie_set_error_callback(sandbox, julie_sandbox_error_handler);
+    julie_set_cur_file(sandbox, julie_get_string_id(sandbox, file_name));
+}
+
+static void julie_bind_detached_array(Julie_Interp *sandbox, Julie_Array *dbindings) {
+    Julie_Detached_Binding *dbinding;
+    Julie_String_ID         id;
+    Julie_Value            *attached_value;
+
+    ARRAY_FOR_EACH(dbindings, dbinding) {
+        id             = julie_get_string_id(sandbox, dbinding->name);
+        attached_value = julie_attach_value(sandbox, dbinding->value);
+        julie_bind(sandbox, id, &attached_value);
+
+        free(dbinding->name);
+        free(dbinding);
+    }
+
+    julie_array_free(dbindings);
+}
+
+static Julie_Value *julie_sandbox_exec(Julie_Interp *sandbox, Julie_Value *detached_expr, Julie_Status *out_status, Julie_Value **out_error_value) {
+    Julie_Value  *attached;
+    Julie_Status  status;
+    Julie_Value  *result;
+    Julie_Value  *detached;
+
+    *out_error_value = NULL;
+    detached         = NULL;
+
+    attached = julie_attach_source_value(sandbox, detached_expr);
+
+    status = julie_eval(sandbox, attached, &result);
+
+    if (status != JULIE_SUCCESS) {
+        goto done;
+    }
+
+    if (result != NULL) {
+        detached = julie_detach_value(result);
+        julie_free_value(sandbox, result);
+    }
+
+done:;
+    julie_free_source_node(sandbox, attached);
+
+    *out_status = status;
+    if (status != JULIE_SUCCESS) {
+        *out_error_value = julie_detach_value(sandbox->sandbox_error_info.thrown.error_value);
+    }
+
+    return detached;
+}
+
+static Julie_Actor *julie_actor_new(void);
 
 static Julie_Status julie_builtin_eval_sandboxed(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
-    Julie_Status         status;
-    Julie_Value         *code;
-    const char          *code_string;
-    unsigned long long   code_len;
-    Julie_Value         *bindings;
-    Julie_Interp        *sandbox;
-    Julie_Value         *sym;
-    Julie_Value        **valp;
-    Julie_Value         *val_cpy;
-    Julie_Value         *it;
-    Julie_Value         *eval_result;
-    Julie_Value         *info;
-    Julie_Value         *key;
-    Julie_Value         *val;
+    Julie_Status  status;
+    Julie_Value  *code;
+    Julie_Value  *config;
+    Julie_Value  *bindings;
+    Julie_Value  *blacklist;
+    Julie_Interp *sandbox;
+    Julie_Array  *dbindings;
+    Julie_Value  *detached;
+    Julie_Value  *dval;
+    Julie_Status  sandbox_status;
+    Julie_Value  *detached_error_value;
 
     *result = NULL;
 
@@ -10637,200 +12628,732 @@ static Julie_Status julie_builtin_eval_sandboxed(Julie_Interp *interp, Julie_Val
     }
 
     status = julie_eval(interp, values[0], &code);
-    if (status != JULIE_SUCCESS) {
-        *result = NULL;
-        goto out;
-    }
+    if (status != JULIE_SUCCESS) { goto out; }
 
-    if (code->type != JULIE_STRING) {
+    if (code->type != JULIE_LIST) {
         status = JULIE_ERR_TYPE;
-        julie_make_type_error(interp, values[0], JULIE_STRING, code->type);
+        julie_make_type_error(interp, values[0], JULIE_LIST, code->type);
         goto out_free_code;
     }
 
-    code_string = julie_value_cstring(code);
-
-    code_len = code->tag == JULIE_STRING_TYPE_INTERN
-                ? julie_get_string(interp, code->string_id)->len
-                : strlen(code_string);
-
-    bindings = NULL;
+    config    = NULL;
+    bindings  = NULL;
+    blacklist = NULL;
     if (n_values == 2) {
-        status = julie_eval(interp, values[1], &bindings);
-        if (status != JULIE_SUCCESS) {
-            *result = NULL;
-            goto out_free_code;
-        }
-        if (bindings->type != JULIE_OBJECT) {
+        status = julie_eval(interp, values[1], &config);
+        if (status != JULIE_SUCCESS) { goto out_free_code; }
+
+        if (config->type != JULIE_OBJECT) {
             status = JULIE_ERR_TYPE;
-            julie_make_type_error(interp, values[1], JULIE_OBJECT, bindings->type);
-            goto out_free_bindings;
+            julie_make_type_error(interp, values[1], JULIE_OBJECT, config->type);
+            goto out_free_config;
         }
+
+        status = julie_parse_sandbox_config(interp, expr, config, &bindings, &blacklist);
+        if (status != JULIE_SUCCESS) { goto out_free_config; }
     }
+
+    (void)blacklist;
 
     sandbox = julie_init_sandboxed_interp();
+    sandbox->actor = julie_actor_new();
 
-    memset(&sandbox->sandbox_error_info, 0, sizeof(sandbox->sandbox_error_info));
-
-    if (interp->output_callback != NULL) {
-        julie_set_output_callback(sandbox, interp->output_callback);
-    }
-#ifdef JULIE_ENABLE_EVAL_CALLBACKS
-    if (interp->eval_callback != NULL) {
-        julie_set_eval_callback(sandbox, interp->eval_callback);
-    }
-    if (interp->post_eval_callback != NULL) {
-        julie_set_post_eval_callback(sandbox, interp->post_eval_callback);
-    }
-#endif
-    julie_set_error_callback(sandbox, julie_sandbox_error_handler);
-
-    julie_set_cur_file(sandbox, julie_get_string_id(interp, "<eval-sandboxed>"));
-
-    status = julie_parse(sandbox, code_string, (int)code_len);
-
-    if (status != JULIE_SUCCESS) {
-        *result = NULL;
-        goto out_free_sandbox;
-    }
+    julie_configure_sandbox(sandbox, interp, "<eval-sandboxed>");
 
     if (bindings != NULL) {
-        hash_table_traverse((_Julie_Object)bindings->object, sym, valp) {
-            if (sym->type != JULIE_SYMBOL) {
-                continue;
-            }
-
-            val_cpy = julie_copy_sandboxed_value(sandbox, *valp);
-            julie_bind(sandbox,
-                       julie_get_string_id(sandbox, julie_get_cstring(sym->string_id)),
-                       &val_cpy);
-        }
+        dbindings = julie_detach_bindings_from_object(bindings);
+        julie_bind_detached_array(sandbox, dbindings);
     }
 
-    *result = NULL;
-    ARRAY_FOR_EACH(sandbox->roots, it) {
-        if (*result != NULL) {
-            julie_free_value(sandbox, *result);
-            *result = NULL;
-        }
-        status = julie_eval(sandbox, it, result);
-        if (status != JULIE_SUCCESS) {
-            *result = NULL;
-            goto out_free_sandbox;
-        }
-    }
-
-out_free_sandbox:;
-    eval_result = (*result == NULL)
-                    ? julie_nil_value(interp)
-                    : julie_copy_sandboxed_value(interp, *result);
-
-    info = julie_object_value(interp);
-
-    key = julie_symbol_value(interp, julie_get_string_id(interp, "'status"));
-    val = julie_sint_value(interp, sandbox->sandbox_error_info.status);
-    julie_object_insert_field(interp, info, key, val, NULL);
-
-    if (sandbox->sandbox_error_info.status != JULIE_SUCCESS) {
-        key = julie_symbol_value(interp, julie_get_string_id(interp, "'error-message"));
-        val = julie_string_value_giveaway(interp, julie_get_sandbox_error_string(&sandbox->sandbox_error_info));
-        julie_object_insert_field(interp, info, key, val, NULL);
-    }
-
-    *result = julie_list_value(interp);
-
-    JULIE_ARRAY_PUSH((*result)->list, eval_result);
-    JULIE_ARRAY_PUSH((*result)->list, info);
+    dval     = julie_detach_value(code);
+    detached = julie_sandbox_exec(sandbox, dval, &sandbox_status, &detached_error_value);
 
     julie_free_error_info(&sandbox->sandbox_error_info);
     julie_free(sandbox);
 
-out_free_bindings:;
-    if (bindings != NULL) {
-        julie_free_value(interp, bindings);
+    if (sandbox_status != JULIE_SUCCESS) {
+        *result = julie_attach_value(interp, detached_error_value);
+    } else if (detached != NULL) {
+        *result = julie_attach_value(interp, detached);
+    } else {
+        *result = julie_nil_value(interp);
     }
+
+    status = JULIE_SUCCESS;
+
+out_free_config:;
+    if (blacklist != NULL) { julie_free_value(interp, blacklist); }
+    if (bindings  != NULL) { julie_free_value(interp, bindings);  }
+    if (config    != NULL) { julie_free_value(interp, config);    }
 
 out_free_code:;
     julie_free_value(interp, code);
 
 out:;
-    return JULIE_SUCCESS;
+    return status;
 }
 
-#if 0
-static Julie_Status julie_builtin_eval_file(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
-    Julie_Status        status;
-    Julie_Value        *path;
-    const Julie_String *pstring;
-    Julie_String_ID     save_file;
-    const char         *mem;
-    unsigned long long  size;
-    Julie_Array        *nodes = JULIE_ARRAY_INIT;
-    unsigned long long  i;
-    Julie_Value        *it;
-    Julie_Value        *ev;
+static void julie_mailbox_init(Julie_Mailbox *mb) {
+    pthread_mutex_init(&mb->lock, NULL);
+    pthread_cond_init(&mb->cond, NULL);
+    mb->queue  = JULIE_ARRAY_INIT;
+    mb->closed = 0;
+}
 
-    status = julie_args(interp, expr, "s", n_values, values, &path);
-    if (status != JULIE_SUCCESS) {
-        *result = NULL;
+static void julie_mailbox_destroy(Julie_Mailbox *mb) {
+    Julie_Value *it;
+    ARRAY_FOR_EACH(mb->queue, it) {
+        julie_free_detached_value(it);
+    }
+    julie_array_free(mb->queue);
+    pthread_cond_destroy(&mb->cond);
+    pthread_mutex_destroy(&mb->lock);
+}
+
+static void julie_mailbox_close(Julie_Mailbox *mb) {
+    pthread_mutex_lock(&mb->lock);
+    mb->closed = 1;
+    pthread_cond_broadcast(&mb->cond);
+    pthread_mutex_unlock(&mb->lock);
+}
+
+static int julie_mailbox_send(Julie_Mailbox *mb, Julie_Value *detached) {
+    int closed;
+
+    pthread_mutex_lock(&mb->lock);
+
+    closed = mb->closed;
+
+    if (!closed) {
+        JULIE_ARRAY_PUSH(mb->queue, detached);
+        pthread_cond_signal(&mb->cond);
+    }
+
+    pthread_mutex_unlock(&mb->lock);
+
+    return !closed;
+}
+
+static Julie_Value *julie_mailbox_receive(Julie_Mailbox *mb) {
+    Julie_Value *msg;
+
+    pthread_mutex_lock(&mb->lock);
+
+    while (julie_array_len(mb->queue) == 0 && !mb->closed) {
+        pthread_cond_wait(&mb->cond, &mb->lock);
+    }
+
+    if (julie_array_len(mb->queue) == 0) {
+        pthread_mutex_unlock(&mb->lock);
+        return NULL;
+    }
+
+    msg = julie_array_elem(mb->queue, 0);
+    julie_array_erase(mb->queue, 0);
+
+    pthread_mutex_unlock(&mb->lock);
+
+    return msg;
+}
+
+static Julie_Value *julie_mailbox_try_receive(Julie_Mailbox *mb) {
+    Julie_Value *msg;
+
+    pthread_mutex_lock(&mb->lock);
+
+    if (julie_array_len(mb->queue) == 0) {
+        pthread_mutex_unlock(&mb->lock);
+        return NULL;
+    }
+
+    msg = julie_array_elem(mb->queue, 0);
+    julie_array_erase(mb->queue, 0);
+
+    pthread_mutex_unlock(&mb->lock);
+
+    return msg;
+}
+
+
+static void julie_actor_ref(Julie_Actor *actor) {
+    __sync_fetch_and_add(&actor->rc, 1);
+}
+
+static void julie_actor_unref(Julie_Actor *actor) {
+    int                     rc;
+    Julie_Detached_Binding *dbinding;
+
+    rc = __sync_sub_and_fetch(&actor->rc, 1);
+    if (rc > 0) { return; }
+
+    if (!actor->is_main && !actor->joined) {
+        pthread_detach(actor->thread);
+    }
+
+    julie_mailbox_destroy(&actor->mailbox);
+
+    if (actor->detached_result != NULL) {
+        julie_free_detached_value(actor->detached_result);
+    }
+    if (actor->detached_error_value != NULL) {
+        julie_free_detached_value(actor->detached_error_value);
+    }
+
+    ARRAY_FOR_EACH(actor->bindings, dbinding) {
+        free(dbinding->name);
+        julie_free_detached_value(dbinding->value);
+        free(dbinding);
+    }
+    julie_array_free(actor->bindings);
+
+    if (actor->detached_expr != NULL) {
+        julie_free_detached_value(actor->detached_expr);
+        actor->detached_expr = NULL;
+    }
+
+    if (actor->parent != NULL) {
+        julie_actor_unref(actor->parent);
+    }
+
+    free(actor);
+}
+
+static Julie_Actor *julie_actor_new(void) {
+    Julie_Actor *actor;
+
+    actor = malloc(sizeof(*actor));
+    memset(actor, 0, sizeof(*actor));
+
+    actor->alive    = 1;
+    actor->rc       = 1;
+    actor->stop     = 0;
+    actor->parent   = NULL;
+    actor->children = JULIE_ARRAY_INIT;
+    pthread_mutex_init(&actor->children_mtx, NULL);
+
+    julie_mailbox_init(&actor->mailbox);
+
+    return actor;
+}
+
+static Julie_Actor *julie_actor_new_main(void) {
+    Julie_Actor *actor;
+
+    actor = julie_actor_new();
+
+    actor->is_main  = 1;
+
+    return actor;
+}
+
+static Julie_Value *julie_actor_value(Julie_Interp *interp, Julie_Actor *actor) {
+    Julie_Value *v;
+
+    v               = JULIE_NEW(interp);
+    v->type         = JULIE_ACTOR;
+    v->tag          = 0;
+    v->source_node  = 0;
+    v->owned        = 0;
+    v->borrow_count = 0;
+    v->object       = actor;
+
+    julie_actor_ref(actor);
+
+    return v;
+}
+
+
+static void *julie_actor_thread_entry(void *arg) {
+    Julie_Actor     *actor;
+    Julie_Interp    *interp;
+    Julie_String_ID  parent_id;
+    Julie_Value     *parent_handle;
+    Julie_Value     *detached;
+    Julie_Status     sandbox_status;
+    Julie_Value     *detached_error_value;
+    unsigned         i;
+    Julie_Actor     *child;
+
+    actor = (Julie_Actor*)arg;
+
+    interp = julie_init_sandboxed_interp();
+    interp->actor = actor;
+
+    if (actor->output_callback != NULL) {
+        julie_set_output_callback(interp, actor->output_callback);
+    }
+
+    memset(&interp->sandbox_error_info, 0, sizeof(interp->sandbox_error_info));
+    julie_set_error_callback(interp, julie_sandbox_error_handler);
+    julie_set_cur_file(interp, julie_get_string_id(interp, "<actor>"));
+
+    julie_bind_detached_array(interp, actor->bindings);
+    actor->bindings = JULIE_ARRAY_INIT;
+
+    if (actor->parent != NULL) {
+        parent_id     = julie_get_string_id(interp, "parent-actor");
+        parent_handle = julie_actor_value(interp, actor->parent);
+        julie_bind(interp, parent_id, &parent_handle);
+    }
+
+    detached = julie_sandbox_exec(interp, actor->detached_expr, &sandbox_status, &detached_error_value);
+    actor->detached_expr = NULL;
+
+    actor->final_status         = sandbox_status;
+    actor->detached_result      = detached;
+    actor->detached_error_value = detached_error_value;
+
+    julie_free_error_info(&interp->sandbox_error_info);
+
+    actor->alive = 0;
+    julie_mailbox_close(&actor->mailbox);
+
+    /* Remove ourself from parent's children list, but only on normal exit.
+       If stop is set, the parent is holding children_mtx and will
+       clear the list itself. */
+    if (actor->parent != NULL && !actor->stop) {
+        pthread_mutex_lock(&actor->parent->children_mtx);
+        i = 0;
+        ARRAY_FOR_EACH(actor->parent->children, child) {
+            if (child == actor) {
+                julie_array_erase(actor->parent->children, i);
+                julie_actor_unref(actor);
+                break;
+            }
+            i += 1;
+        }
+        pthread_mutex_unlock(&actor->parent->children_mtx);
+    }
+
+    julie_free(interp);
+
+    return NULL;
+}
+
+static Julie_Status julie_builtin_actor_spawn(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status            status;
+    Julie_Value            *code;
+    Julie_Value            *config;
+    Julie_Value            *bindings;
+    Julie_Value            *blacklist;
+    Julie_Actor            *actor;
+    Julie_Array            *dbindings       = JULIE_ARRAY_INIT;
+    Julie_Array            *dbindings_extra = JULIE_ARRAY_INIT;
+    Julie_Detached_Binding *dbinding;
+    int                     err;
+
+    *result = NULL;
+
+    if (n_values < 1 || n_values > 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
         goto out;
     }
 
-    pstring = julie_get_string(interp, julie_value_string_id(interp, path));
-    julie_free_value(interp, path);
+    status = julie_eval(interp, values[0], &code);
+    if (status != JULIE_SUCCESS) { goto out; }
 
-    status = julie_map_file_into_readonly_memory(pstring->chars, &mem, &size);
-    if (status != JULIE_SUCCESS) {
-        *result = NULL;
-        julie_make_file_error(interp, expr, status, pstring->chars);
-        goto out_free;
+    if (code->type != JULIE_LIST) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_LIST, code->type);
+        goto out_free_code;
     }
 
-    save_file           = interp->cur_file_id;
-    interp->cur_file_id = (Julie_String_ID)pstring;
+    config    = NULL;
+    bindings  = NULL;
+    blacklist = NULL;
+    if (n_values == 2) {
+        status = julie_eval(interp, values[1], &config);
+        if (status != JULIE_SUCCESS) { goto out_free_code; }
 
-    status = julie_parse_nodes(interp, mem, size, &nodes);
+        if (config->type != JULIE_OBJECT) {
+            status = JULIE_ERR_TYPE;
+            julie_make_type_error(interp, values[1], JULIE_OBJECT, config->type);
+            goto out_free_config;
+        }
+
+        status = julie_parse_sandbox_config(interp, expr, config, &bindings, &blacklist);
+        if (status != JULIE_SUCCESS) { goto out_free_config; }
+    }
+
+    dbindings = julie_detach_globals(interp, blacklist);
+
+    if (bindings != NULL) {
+        dbindings_extra = julie_detach_bindings_from_object(bindings);
+
+        ARRAY_FOR_EACH(dbindings_extra, dbinding) {
+            JULIE_ARRAY_PUSH(dbindings, dbinding);
+        }
+        julie_array_free(dbindings_extra);
+    }
+
+    actor = julie_actor_new();
+
+    actor->parent = interp->actor;
+    actor->rc += 1; /* parent's handle */
+    julie_actor_ref(actor->parent);
+
+    actor->output_callback = interp->output_callback;
+
+    actor->detached_expr = julie_detach_value(code);
+
+    actor->bindings = dbindings;
+
+    pthread_mutex_lock(&interp->actor->children_mtx);
+    JULIE_ARRAY_PUSH(interp->actor->children, actor);
+    julie_actor_ref(actor);
+    pthread_mutex_unlock(&interp->actor->children_mtx);
+
+    err = pthread_create(&actor->thread, NULL, julie_actor_thread_entry, actor);
+
+    if (err != 0) {
+        status = JULIE_ERR_ACTOR_JOIN;
+        julie_make_interp_error(interp, expr, status);
+
+        julie_actor_unref(actor->parent);
+        actor->parent   = NULL;
+        actor->rc       = 1;
+        julie_actor_unref(actor);
+
+        goto out_free_config;
+    }
+
+    /* Create handle for parent.  actor starts at rc 2 (parent + child),
+       and julie_actor_value bumps by 1 then unref drops back. */
+    *result = julie_actor_value(interp, actor);
+    julie_actor_unref(actor);
+
+    status = JULIE_SUCCESS;
+
+out_free_config:;
+    if (blacklist != NULL) { julie_free_value(interp, blacklist); }
+    if (bindings  != NULL) { julie_free_value(interp, bindings);  }
+    if (config    != NULL) { julie_free_value(interp, config);    }
+
+out_free_code:;
+    julie_free_value(interp, code);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_actor_send(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *handle;
+    Julie_Value  *val;
+    Julie_Actor  *target;
+    Julie_Value  *detached;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &handle);
+    if (status != JULIE_SUCCESS) { goto out; }
+
+    if (handle->type != JULIE_ACTOR) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_ACTOR, handle->type);
+        goto out_free_handle;
+    }
+
+    status = julie_eval(interp, values[1], &val);
+    if (status != JULIE_SUCCESS) { goto out_free_handle; }
+
+    target   = (Julie_Actor*)handle->object;
+    detached = julie_detach_value(val);
+
+    if (!julie_mailbox_send(&target->mailbox, detached)) {
+        julie_free_detached_value(detached);
+
+        /* Return an error value instead of throwing. */
+        *result = julie_error_value(interp, julie_error_string(JULIE_ERR_ACTOR_DEAD));
+        status = JULIE_SUCCESS;
+        goto out_free_val;
+    }
+
+    *result = julie_nil_value(interp);
+
+out_free_val:;
+    julie_free_value(interp, val);
+out_free_handle:;
+    julie_free_value(interp, handle);
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_actor_receive(Julie_Interp *interp, Julie_Value  *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Value *detached;
+
+    (void)values;
+
+    *result = NULL;
+
+    if (n_values != 0) {
+        julie_make_arity_error(interp, expr, 0, n_values, 0);
+        return JULIE_ERR_ARITY;
+    }
+
+    if (interp->actor == NULL) {
+        julie_make_interp_error(interp, expr, JULIE_ERR_NO_MAILBOX);
+        return JULIE_ERR_NO_MAILBOX;
+    }
+
+    detached = julie_mailbox_receive(&interp->actor->mailbox);
+
+    if (detached == NULL) {
+        /* Mailbox closed — return error value. */
+        *result = julie_error_value(interp, "Mailbox closed.");
+    } else {
+        *result = julie_attach_value(interp, detached);
+    }
+
+    return JULIE_SUCCESS;
+}
+
+static Julie_Status julie_builtin_actor_try_receive(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Value  *detached;
+
+    (void)values;
+
+    *result = NULL;
+
+    if (n_values != 0) {
+        julie_make_arity_error(interp, expr, 0, n_values, 0);
+        return JULIE_ERR_ARITY;
+    }
+
+    if (interp->actor == NULL) {
+        julie_make_interp_error(interp, expr, JULIE_ERR_NO_MAILBOX);
+        return JULIE_ERR_NO_MAILBOX;
+    }
+
+    detached = julie_mailbox_try_receive(&interp->actor->mailbox);
+
+    if (detached == NULL) {
+        *result = julie_nil_value(interp);
+    } else {
+        *result = julie_attach_value(interp, detached);
+    }
+
+    return JULIE_SUCCESS;
+}
+
+static Julie_Status julie_builtin_actor_join(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *handle;
+    Julie_Actor  *actor;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &handle);
+    if (status != JULIE_SUCCESS) { goto out; }
+
+    if (handle->type != JULIE_ACTOR) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_ACTOR, handle->type);
+        goto out_free_handle;
+    }
+
+    actor = (Julie_Actor*)handle->object;
+
+    if (actor->is_main || actor->joined) {
+        status = JULIE_ERR_ACTOR_JOIN;
+        julie_make_interp_error(interp, expr, status);
+        goto out_free_handle;
+    }
+
+    pthread_join(actor->thread, NULL);
+    actor->joined = 1;
+
+    if (actor->final_status != JULIE_SUCCESS) {
+        *result = julie_attach_value(interp, actor->detached_error_value);
+        actor->detached_error_value = NULL;
+    } else if (actor->detached_result != NULL) {
+        *result = julie_attach_value(interp, actor->detached_result);
+        actor->detached_result = NULL;
+    } else {
+        *result = julie_nil_value(interp);
+    }
+
+    status = JULIE_SUCCESS;
+
+out_free_handle:;
+    julie_free_value(interp, handle);
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_actor_stop(Julie_Interp *interp, Julie_Value  *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *handle;
+    Julie_Actor  *actor;
+    Julie_Actor  *child;
+    unsigned      i;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &handle);
+    if (status != JULIE_SUCCESS) { goto out; }
+
+    if (handle->type != JULIE_ACTOR) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_ACTOR, handle->type);
+        goto out_free_handle;
+    }
+
+    actor = handle->actor;
+
+    if (actor->is_main || actor->joined) {
+        status = JULIE_ERR_ACTOR_JOIN;
+        julie_make_interp_error(interp, expr, status);
+        goto out_free_handle;
+    }
+
+    actor->stop = 1;
+    julie_mailbox_close(&actor->mailbox);
+    pthread_join(actor->thread, NULL);
+    actor->joined = 1;
+
+    if (actor->parent != NULL) {
+        pthread_mutex_lock(&actor->parent->children_mtx);
+        i = 0;
+        ARRAY_FOR_EACH(actor->parent->children, child) {
+            if (child == actor) {
+                julie_array_erase(actor->parent->children, i);
+                julie_actor_unref(actor);
+                break;
+            }
+            i += 1;
+        }
+        pthread_mutex_unlock(&actor->parent->children_mtx);
+    }
+
+    *result = julie_nil_value(interp);
+    status  = JULIE_SUCCESS;
+
+out_free_handle:;
+    julie_free_value(interp, handle);
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_eval_file(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status          status;
+    Julie_Value          *path;
+    const char           *pstring;
+    Julie_Error_Callback  save_err_callback;
+    const char           *mem;
+    unsigned long long    size;
+    Julie_String_ID       save_file;
+    Julie_Array          *roots = JULIE_ARRAY_INIT;
+    unsigned long long    err_line;
+    unsigned long long    err_col;
+    unsigned long long    i;
+    Julie_Value          *it;
+    Julie_Value          *ev;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &path);
+    if (status != JULIE_SUCCESS) { goto out; }
+
+    if (path->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, path->type);
+        julie_free_value(interp, path);
+        goto out;
+    }
+
+    save_err_callback = interp->error_callback;
+    save_file         = interp->cur_file_id;
+
+    interp->error_callback = julie_sandbox_error_handler;
+
+    pstring = julie_value_cstring(path);
+
+    status = julie_map_file_into_readonly_memory(pstring, &mem, &size);
     if (status != JULIE_SUCCESS) {
-        *result = NULL;
-        goto out_restore_file;
+        julie_make_file_error(interp, expr, status, pstring);
+        status = JULIE_SUCCESS;
+        *result = julie_force_copy(interp, interp->sandbox_error_info.thrown.error_value);
+        julie_free_error_info(&interp->sandbox_error_info);
+        memset(&interp->sandbox_error_info, 0, sizeof(interp->sandbox_error_info));
+        goto out_restore;
+    }
+
+    interp->cur_file_id = julie_get_string_id(interp, pstring);
+
+    status = julie_parse_roots(interp, &roots, mem, size, &err_line, &err_col, 1);
+    if (status != JULIE_SUCCESS) {
+        julie_make_parse_error(interp, err_line, err_col, status);
+        status = JULIE_SUCCESS;
+        *result = julie_force_copy(interp, interp->sandbox_error_info.thrown.error_value);
+        julie_free_error_info(&interp->sandbox_error_info);
+        memset(&interp->sandbox_error_info, 0, sizeof(interp->sandbox_error_info));
+        goto out_restore;
     }
 
     i = 0;
-    ARRAY_FOR_EACH(nodes, it) {
+    ARRAY_FOR_EACH(roots, it) {
         status = julie_eval(interp, it, &ev);
         if (status != JULIE_SUCCESS) {
-            *result = NULL;
-            goto out_restore_file;
+            status = JULIE_SUCCESS;
+            *result = julie_force_copy(interp, interp->sandbox_error_info.thrown.error_value);
+            julie_free_error_info(&interp->sandbox_error_info);
+            memset(&interp->sandbox_error_info, 0, sizeof(interp->sandbox_error_info));
+            goto out_restore;
         }
 
         i += 1;
 
-        if (i == julie_array_len(nodes)) {
+        if (i == julie_array_len(roots)) {
             *result = ev;
         } else {
             julie_free_value(interp, ev);
         }
     }
 
-    if (*result != NULL) {
-        *result = julie_force_copy(interp, *result);
-    } else {
+    if (*result == NULL) {
         *result = julie_nil_value(interp);
     }
 
-out_restore_file:;
-    interp->cur_file_id = save_file;
+out_restore:;
+    interp->error_callback = save_err_callback;
+    interp->cur_file_id    = save_file;
 
-out_free:;
-    ARRAY_FOR_EACH(nodes, it) {
-        julie_force_free_value(interp, it);
+    ARRAY_FOR_EACH(roots, it) {
+        julie_free_value(interp, it);
     }
-    julie_array_free(nodes);
+    julie_array_free(roots);
+
+    julie_free_value(interp, path);
 
 out:;
     return status;
 }
-#endif
 
 static Julie_Status julie_builtin_use_package(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status        status;
@@ -10981,7 +13504,89 @@ out:;
     return status;
 }
 
-static Julie_Status julie_builtin_abs(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+static Julie_Status julie_builtin_getenv(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *name;
+    const char   *val;
+
+    *result = NULL;
+
+    if (n_values != 1) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 1, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &name);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (name->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, name->type);
+        julie_free_value(interp, name);
+        goto out;
+    }
+
+    val     = getenv(julie_value_cstring(name));
+    *result = val != NULL ? julie_string_value(interp, val) : julie_nil_value(interp);
+    julie_free_value(interp, name);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_setenv(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status  status;
+    Julie_Value  *name;
+    Julie_Value  *val;
+
+    *result = NULL;
+
+    if (n_values != 2) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 2, n_values, 0);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[0], &name);
+    if (status != JULIE_SUCCESS) {
+        goto out;
+    }
+
+    if (name->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[0], JULIE_STRING, name->type);
+        julie_free_value(interp, name);
+        goto out;
+    }
+
+    status = julie_eval(interp, values[1], &val);
+    if (status != JULIE_SUCCESS) {
+        julie_free_value(interp, name);
+        goto out;
+    }
+
+    if (val->type != JULIE_STRING) {
+        status = JULIE_ERR_TYPE;
+        julie_make_type_error(interp, values[1], JULIE_STRING, val->type);
+        julie_free_value(interp, name);
+        julie_free_value(interp, val);
+        goto out;
+    }
+
+    setenv(julie_value_cstring(name), julie_value_cstring(val), 1);
+
+    *result = julie_nil_value(interp);
+    julie_free_value(interp, name);
+    julie_free_value(interp, val);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_sleep(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status  status;
     Julie_Value  *f;
 
@@ -10991,9 +13596,34 @@ static Julie_Status julie_builtin_abs(Julie_Interp *interp, Julie_Value *expr, u
         goto out;
     }
 
-    *result = julie_float_value(interp, fabs(f->floating));
+    usleep((int)(f->floating * 1000000));
+
+    *result = julie_nil_value(interp);
 
     julie_free_value(interp, f);
+
+out:;
+    return status;
+}
+
+static Julie_Status julie_builtin_time(Julie_Interp *interp, Julie_Value *expr, unsigned n_values, Julie_Value **values, Julie_Value **result) {
+    Julie_Status    status;
+    struct timespec ts;
+
+    (void)expr;
+    (void)values;
+
+    status = JULIE_SUCCESS;
+
+    if (n_values != 0) {
+        status = JULIE_ERR_ARITY;
+        julie_make_arity_error(interp, expr, 0, n_values, 0);
+        *result = NULL;
+        goto out;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    *result = julie_uint_value(interp, (unsigned long long)ts.tv_sec * 1000000000ULL + (unsigned long long)ts.tv_nsec);
 
 out:;
     return status;
@@ -11003,7 +13633,7 @@ out:;
  *                        Interp                         *
  *********************************************************/
 
-static Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
+Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result);
 
 static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Context *cxt, Julie_Value *expr, Julie_Value *fn, Julie_Value **result) {
     Julie_Status              status;
@@ -11020,6 +13650,7 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
     Julie_Value              *param_list;
     int                       vargs;
     Julie_Value             **arg_vals;
+    unsigned                  n_cleanup;
     unsigned                  i;
     Julie_Value              *ev;
     Julie_Value              *rest;
@@ -11071,17 +13702,19 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
             pushed_symtab = 0;
 
             arg_vals = alloca(n_params * sizeof(Julie_Value*));
+            n_cleanup = 0;
 
             for (i = 0; i < n_params - !!vargs; i += 1) {
-                status = julie_eval(interp, values[i], &ev);
+                status = julie_eval_no_throw(interp, values[i], &ev);
                 if (status != JULIE_SUCCESS) { goto cleanup; }
                 arg_vals[i] = ev;
+                n_cleanup += 1;
             }
 
             if (vargs) {
                 rest = julie_list_value(interp);
                 for (; i < n_values; i += 1) {
-                    status = julie_eval(interp, values[i], &ev);
+                    status = julie_eval_no_throw(interp, values[i], &ev);
                     if (status != JULIE_SUCCESS) {
                         julie_free_value(interp, rest);
                         goto cleanup;
@@ -11095,6 +13728,7 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
                     }
                 }
                 arg_vals[n_params - 1] = rest;
+                n_cleanup += 1;
             }
 
             julie_push_local_symtab(interp);
@@ -11131,6 +13765,11 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
                     julie_make_bind_error(interp, values[i], status, id);
                     goto cleanup;
                 }
+
+                if ((unsigned long long)arg_vals[i] & 0x1) {
+                    arg_vals[i] = (void*)((unsigned long long)ev | 0x1);
+                    ev->owned = 1;
+                }
             }
 
             n_exprs = julie_array_len(fn->list) - !no_param_lambda;
@@ -11140,7 +13779,12 @@ static Julie_Status _julie_invoke_with_cxt(Julie_Interp *interp, Julie_Apply_Con
 
                 JULIE_BORROW_NO_CHECK(val);
 
-                status = julie_eval(interp, val, &ev);
+                if (i == n_exprs - 1) {
+                    status = julie_eval_no_throw(interp, val, &ev);
+                } else {
+                    status = julie_eval(interp, val, &ev);
+                }
+
                 if (status != JULIE_SUCCESS) {
                     JULIE_UNBORROW_NO_CHECK(val);
                     goto cleanup;
@@ -11170,14 +13814,16 @@ cleanup:;
                 *result = NULL;
             }
 
-            for (i = 0; i < n_params; i += 1) {
+            for (i = 0; i < n_cleanup; i += 1) {
                 ev = arg_vals[i];
                 transient_to_ref = !!((unsigned long long)ev & 0x1);
                 ev = (void*)((unsigned long long)ev & ~0x1);
 
                 if (transient_to_ref) {
                     ev->owned = 0;
-                    julie_force_free_value(interp, ev);
+                    if (status != JULIE_SUCCESS || *result != ev) {
+                        julie_force_free_value(interp, ev);
+                    }
                 }
             }
 
@@ -11211,7 +13857,6 @@ out:;
 static Julie_Status julie_invoke(Julie_Interp *interp, Julie_Value *expr, Julie_Value *fn, unsigned long long n_values, Julie_Value **values, Julie_Value **result) {
     Julie_Status             status;
     Julie_Apply_Context     *cxt;
-    unsigned long long       i;
     Julie_Source_Value_Info *source_info;
 
     cxt = julie_push_cxt(interp, expr);
@@ -11248,7 +13893,6 @@ static Julie_Status julie_apply(Julie_Interp *interp, Julie_Value *list, Julie_V
     Julie_String_ID          id;
     Julie_Value             *lookup;
     Julie_Value             *infix_arg_vals[2];
-    unsigned                 i;
     Julie_Source_Value_Info *source_info;
 
     status = JULIE_SUCCESS;
@@ -11348,49 +13992,52 @@ out:;
     return status;
 }
 
-static Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result) {
-    Julie_Status        status;
-    unsigned long long  list_len;
-    Julie_Value        *orig_value;
-    Julie_Value        *first;
-    Julie_String_ID     id;
+static Julie_Status _julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result, int throw_err) {
+    Julie_Status             status;
+    Julie_Value             *orig_value;
+    unsigned long long       list_len;
+    Julie_Source_Value_Info *source_info;
+    Julie_String_ID          id;
 
     status = JULIE_SUCCESS;
 
-    *result = NULL;
-
-#ifdef JULIE_ENABLE_EVAL_CALLBACKS
-    if (interp->eval_callback != NULL) {
-        status = interp->eval_callback(interp, value);
-        if (status != JULIE_SUCCESS) {
-            julie_make_interp_error(interp, value, status);
-            goto out;
-        }
-    }
-#endif
-
+    *result    = NULL;
     orig_value = value;
+
+    if (unlikely(interp->actor->stop)) {
+        julie_make_interp_error(interp, value, JULIE_ERR_EVAL_CANCELLED);
+        return JULIE_ERR_EVAL_CANCELLED;
+    }
 
     if (value->type == JULIE_LIST) {
         list_len = julie_array_len(value->list);
 
         if (unlikely(list_len <= 1)) {
-            if (list_len == 1) {
-                first = julie_array_elem(value->list, 0);
+            if (list_len == 1
+            &&  (source_info = julie_get_source_value_info(value)) != NULL
+            &&  !source_info->paren) {
 
-                if (JULIE_TYPE_IS_NUMBER(first->type)
-                ||  first->type == JULIE_STRING
-                ||  first->type == JULIE_NIL) {
-
-                    value = first;
-                    goto copy;
-                }
+                value = julie_array_elem(value->list, 0);
             } else if (list_len == 0) {
                 value = julie_nil_value(interp);
-                goto copy;
             }
         }
+    }
 
+#ifdef JULIE_ENABLE_EVAL_CALLBACKS
+    if (interp->eval_callback != NULL) {
+        status = interp->eval_callback(interp, value, result);
+        if (status != JULIE_SUCCESS) {
+            julie_make_interp_error(interp, orig_value, status);
+            goto out;
+        }
+        if (*result != NULL) {
+            goto out;
+        }
+    }
+#endif
+
+    if (value->type == JULIE_LIST) {
         status = julie_apply(interp, value, result);
 
     } else {
@@ -11406,15 +14053,20 @@ static Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_V
             }
         }
 
-copy:;
         *result = julie_copy(interp, value);
     }
 
 out:;
+    if (throw_err && status == JULIE_SUCCESS && *result != NULL && (*result)->type == JULIE_ERROR) {
+        julie_make_runtime_error(interp, orig_value, *result);
+        status = JULIE_ERR_ERROR_VALUE;
+        julie_free_value(interp, *result);
+        *result = NULL;
+    }
 
 #ifdef JULIE_ENABLE_EVAL_CALLBACKS
     if (interp->post_eval_callback != NULL && status == JULIE_SUCCESS) {
-        status = interp->post_eval_callback(interp, status, orig_value, result);
+        status = interp->post_eval_callback(interp, status, value, result);
         if (status != JULIE_SUCCESS) {
             julie_make_interp_error(interp, orig_value, status);
             goto out;
@@ -11425,6 +14077,13 @@ out:;
     return status;
 }
 
+Julie_Status julie_eval(Julie_Interp *interp, Julie_Value *value, Julie_Value **result) {
+    return _julie_eval(interp, value, result, 1);
+}
+
+static Julie_Status julie_eval_no_throw(Julie_Interp *interp, Julie_Value *value, Julie_Value **result) {
+    return _julie_eval(interp, value, result, 0);
+}
 
 Julie_Status julie_set_error_callback(Julie_Interp *interp, Julie_Error_Callback cb) {
     interp->error_callback = cb;
@@ -11584,10 +14243,6 @@ static Julie_Interp *_julie_init_interp(int sandboxed) {
     Julie_Interp *interp;
     int           i;
 
-    if (!sandboxed) {
-        srandom(time(NULL));
-    }
-
     err = posix_memalign((void**)&interp, 64, sizeof(*interp));
     (void)err;
 
@@ -11651,9 +14306,12 @@ static Julie_Interp *_julie_init_interp(int sandboxed) {
     JULIE_BIND_FN(      "`",                     julie_builtin_id);
     JULIE_BIND_FN(      "'",                     julie_builtin_quote);
 
+    JULIE_BIND_FN(      "error",                 julie_builtin_error);
+    JULIE_BIND_FN(      "error-field",           julie_builtin_error_field);
+
     JULIE_BIND_INFIX_FN("=",                     julie_builtin_assign);
     JULIE_BIND_INFIX_FN(":=",                    julie_builtin_assign_global);
-    JULIE_BIND_FN(      "unref",                 julie_builtin_unref);
+    JULIE_BIND_FN(      "unbind",                julie_builtin_unbind);
     JULIE_BIND_FN(      "is-bound",              julie_builtin_is_bound);
     JULIE_BIND_FN(      "move",                  julie_builtin_move);
 
@@ -11699,6 +14357,24 @@ static Julie_Interp *_julie_init_interp(int sandboxed) {
 
     JULIE_BIND_FN(      "max",                   julie_builtin_max);
     JULIE_BIND_FN(      "min",                   julie_builtin_min);
+    JULIE_BIND_FN(      "pow",                   julie_builtin_pow);
+    JULIE_BIND_FN(      "abs",                   julie_builtin_abs);
+    JULIE_BIND_FN(      "sqrt",                  julie_builtin_sqrt);
+    JULIE_BIND_FN(      "floor",                 julie_builtin_floor);
+    JULIE_BIND_FN(      "ceil",                  julie_builtin_ceil);
+    JULIE_BIND_FN(      "round",                 julie_builtin_round);
+    JULIE_BIND_FN(      "log",                   julie_builtin_log);
+    JULIE_BIND_FN(      "log2",                  julie_builtin_log2);
+    JULIE_BIND_FN(      "log10",                 julie_builtin_log10);
+    JULIE_BIND_FN(      "exp",                   julie_builtin_exp);
+    JULIE_BIND_FN(      "sin",                   julie_builtin_sin);
+    JULIE_BIND_FN(      "cos",                   julie_builtin_cos);
+    JULIE_BIND_FN(      "tan",                   julie_builtin_tan);
+    JULIE_BIND_FN(      "asin",                  julie_builtin_asin);
+    JULIE_BIND_FN(      "acos",                  julie_builtin_acos);
+    JULIE_BIND_FN(      "atan",                  julie_builtin_atan);
+    JULIE_BIND_FN(      "atan2",                 julie_builtin_atan2);
+    JULIE_BIND_FN(      "clamp",                 julie_builtin_clamp);
 
     JULIE_BIND_FN(      "list",                  julie_builtin_list);
     JULIE_BIND_FN(      "elem",                  julie_builtin_elem);
@@ -11712,6 +14388,14 @@ static Julie_Interp *_julie_init_interp(int sandboxed) {
     JULIE_BIND_FN(      "sorted-insert",         julie_builtin_sorted_insert);
 
     JULIE_BIND_FN(      "apply",                 julie_builtin_apply);
+    JULIE_BIND_FN(      "map",                   julie_builtin_map);
+    JULIE_BIND_FN(      "filter",                julie_builtin_filter);
+    JULIE_BIND_FN(      "reduce",                julie_builtin_reduce);
+    JULIE_BIND_FN(      "reverse",               julie_builtin_reverse);
+    JULIE_BIND_FN(      "any",                   julie_builtin_any);
+    JULIE_BIND_FN(      "all",                   julie_builtin_all);
+    JULIE_BIND_FN(      "zip",                   julie_builtin_zip);
+    JULIE_BIND_FN(      "concat",                julie_builtin_concat);
 
     JULIE_BIND_INFIX_FN(":",                     julie_builtin_pair);
     JULIE_BIND_FN(      "pair",                  julie_builtin_pair);
@@ -11764,28 +14448,51 @@ static Julie_Interp *_julie_init_interp(int sandboxed) {
     JULIE_BIND_FN(      "startswith",            julie_builtin_startswith);
     JULIE_BIND_FN(      "endswith",              julie_builtin_endswith);
     JULIE_BIND_FN(      "substr",                julie_builtin_substr);
+    JULIE_BIND_FN(      "join",                  julie_builtin_join);
+    JULIE_BIND_FN(      "upper",                 julie_builtin_upper);
+    JULIE_BIND_FN(      "lower",                 julie_builtin_lower);
+    JULIE_BIND_FN(      "sfind",                 julie_builtin_sfind);
     JULIE_BIND_INFIX_FN("=~",                    julie_builtin_regex_match);
 
     JULIE_BIND_FN(      "fopen-rd",              julie_builtin_fopen_rd);
     JULIE_BIND_FN(      "fopen-wr",              julie_builtin_fopen_wr);
+    JULIE_BIND_FN(      "fopen-ap",              julie_builtin_fopen_ap);
     JULIE_BIND_FN(      "fclose",                julie_builtin_fclose);
     JULIE_BIND_FN(      "frewind",               julie_builtin_frewind);
+    JULIE_BIND_FN(      "fread",                 julie_builtin_fread);
     JULIE_BIND_FN(      "fread-line",            julie_builtin_fread_line);
     JULIE_BIND_FN(      "fread-lines",           julie_builtin_fread_lines);
     JULIE_BIND_FN(      "fwrite",                julie_builtin_fwrite);
+    JULIE_BIND_FN(      "fexists",               julie_builtin_fexists);
+    JULIE_BIND_FN(      "fremove",               julie_builtin_fremove);
+    JULIE_BIND_FN(      "frename",               julie_builtin_frename);
 
     JULIE_BIND_FN(      "backtrace",             julie_builtin_backtrace);
 
-    JULIE_BIND_FN(      "eval",                  julie_builtin_eval);
+    JULIE_BIND_FN(      "parse-julie",           julie_builtin_parse_julie);
+    JULIE_BIND_FN(      "eval-file",             julie_builtin_eval_file);
     JULIE_BIND_FN(      "eval-sandboxed",        julie_builtin_eval_sandboxed);
-//     JULE_BIND_FN(       "eval-file",             julie_builtin_eval_file);
+
+    JULIE_BIND_FN(      "actor-spawn",           julie_builtin_actor_spawn);
+    JULIE_BIND_FN(      "actor-send",            julie_builtin_actor_send);
+    JULIE_BIND_FN(      "actor-receive",         julie_builtin_actor_receive);
+    JULIE_BIND_FN(      "actor-try-receive",     julie_builtin_actor_try_receive);
+    JULIE_BIND_FN(      "actor-join",            julie_builtin_actor_join);
+    JULIE_BIND_FN(      "actor-stop",            julie_builtin_actor_stop);
     JULIE_BIND_FN(      "use-package",           julie_builtin_use_package);
     JULIE_BIND_FN(      "add-package-directory", julie_builtin_add_package_directory);
 
     JULIE_BIND_FN(      "argv",                  julie_builtin_argv);
     JULIE_BIND_FN(      "exit",                  julie_builtin_exit);
     JULIE_BIND_FN(      "rand",                  julie_builtin_rand);
-    JULIE_BIND_FN(      "abs",                   julie_builtin_abs);
+    JULIE_BIND_FN(      "getenv",                julie_builtin_getenv);
+    JULIE_BIND_FN(      "setenv",                julie_builtin_setenv);
+    JULIE_BIND_FN(      "sleep",                 julie_builtin_sleep);
+    JULIE_BIND_FN(      "time",                  julie_builtin_time);
+
+    if (!sandboxed) {
+        interp->actor = julie_actor_new_main();
+    }
 
     return interp;
 }
@@ -11821,6 +14528,7 @@ out:;
 }
 
 void julie_free(Julie_Interp *interp) {
+    Julie_Actor             *child;
     char                    *arg;
     Julie_Value             *it;
     Julie_Symbol_Table      *symtab;
@@ -11832,6 +14540,22 @@ void julie_free(Julie_Interp *interp) {
     void                    *handle;
     Julie_String_ID          re_id;
     regex_t                 *re;
+    Julie_Value             *next;
+
+    pthread_mutex_lock(&interp->actor->children_mtx);
+    ARRAY_FOR_EACH(interp->actor->children, child) {
+        child->stop = 1;
+        julie_mailbox_close(&child->mailbox);
+    }
+    ARRAY_FOR_EACH(interp->actor->children, child) {
+        pthread_join(child->thread, NULL);
+        child->joined = 1;
+    }
+    ARRAY_FOR_EACH(interp->actor->children, child) {
+        julie_actor_unref(child);
+    }
+    julie_array_free(interp->actor->children);
+    pthread_mutex_unlock(&interp->actor->children_mtx);
 
     ARRAY_FOR_EACH(interp->argv, arg) {
         free(arg);
@@ -11908,6 +14632,20 @@ void julie_free(Julie_Interp *interp) {
     julie_array_free(interp->package_handles);
 
     julie_array_free(interp->package_dirs);
+
+    if (interp->actor != NULL) {
+        interp->actor->alive = 0;
+        julie_mailbox_close(&interp->actor->mailbox);
+        julie_actor_unref(interp->actor);
+        interp->actor = NULL;
+    }
+
+    it = interp->value_free_list;
+    while (it != NULL) {
+        next = it->free_list_next;
+        free(it);
+        it = next;
+    }
 
     free(interp);
 }

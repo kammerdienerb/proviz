@@ -51,7 +51,7 @@ define-class FlameScope-View-Input-Handler
         fn (&self &view &key)
             match &key
                 "q"
-                    @term:exit
+                    (@term:exit)
                 "up"
                     (&view 'vert-offset) += (&view 'height)
                     (&view 'vert-offset) = (min (&view 'vert-offset) 0)
@@ -142,7 +142,7 @@ define-class FlameScope-View-Input-Handler
                         unref &widget
 
                     if did-paint-other-range
-                        @term:flush
+                        (@term:flush)
 
 flamescope-command =
     fn (&profile)

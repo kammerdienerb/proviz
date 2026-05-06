@@ -9,7 +9,7 @@ define-class LineGraph-Sub-FlameGraph-View-Input-Handler
                         &widget = ((&view 'widgets) widget-name)
                         if ((&widget '__class__) == (' Flame-Graph))
                             &widget @ ('reset-zoom &view)
-                        unref &widget
+                        unbind &widget
                 "up"
                     ++ (&view 'vert-offset)
                     &view @ ('paint)
@@ -44,14 +44,14 @@ define-class LineGraph-Sub-FlameGraph-View-Input-Handler
                         response = (&widget @ ('mouse-click &view &row &col))
                     elif (&action == 'over)
                         response = (&widget @ ('mouse-over &view &row &col))
-                    unref &widget
+                    unbind &widget
 
 define-class Plot-View-Input-Handler
     'on-key :
         fn (&self &view &key)
             match &key
                 "q"
-                    @term:exit
+                    (@term:exit)
                 "up"
                     (&view 'vert-offset) += (&view 'height)
                     (&view 'vert-offset) = (min (&view 'vert-offset) 0)
@@ -112,7 +112,7 @@ define-class Plot-View-Input-Handler
                                 &linegraph-widget = ((&view 'widgets) linegraph-widget-name)
                                 if ((&linegraph-widget '__class__) == (' Line-Graph))
                                     &linegraph-widget @ ('reset-selection &view)
-                                unref &linegraph-widget
+                                unbind &linegraph-widget
 
                             views <-
                                 "flamegraph" :
@@ -128,7 +128,7 @@ define-class Plot-View-Input-Handler
 
                             &current-view @ ('paint)
 
-                    unref &widget
+                    unbind &widget
 
                 if (range-hover-widget-name != nil)
                     range = (((&view 'widgets) range-hover-widget-name) @ ('get-selected-range))
@@ -140,10 +140,10 @@ define-class Plot-View-Input-Handler
                         if ((widget-name != range-hover-widget-name) and ('set-mirror-range in ((&widget '__class__))))
                             &widget @ ('set-mirror-range &view range)
                             did-paint-other-range = 1
-                        unref &widget
+                        unbind &widget
 
                     if did-paint-other-range
-                        @term:flush
+                        (@term:flush)
 
 plot-command =
     fn (&profile)

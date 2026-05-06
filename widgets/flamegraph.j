@@ -12,7 +12,7 @@ define-class Flame-Graph-Frame
     'new :
         fn (label)
             frame = (new-instance Flame-Graph-Frame)
-            
+
             type = 'unknown
 
             if (endswith label "_[k]")
@@ -170,7 +170,7 @@ define-class Flame-Graph-Frame
                         &child @ ('paint (&row - 1) (&start-col + child-offset) child-width)
 
                     child-offset += child-width
-                    unref &child
+                    unbind &child
 
 define-class Flame-Graph
     'base          : nil
@@ -199,7 +199,7 @@ define-class Flame-Graph
 
             flame @ ('sort)
 
-            unref &base
+            unbind &base
             flame
 
     'sort :
@@ -213,9 +213,9 @@ define-class Flame-Graph
             foreach zframe (split (&self 'zoom-stack) ";")
                 if (zframe in (&cur-frame 'children))
                     &new-cur-frame = ((&cur-frame 'children) zframe)
-                    unref &cur-frame
+                    unbind &cur-frame
                     &cur-frame = &new-cur-frame
-                    unref &new-cur-frame
+                    unbind &new-cur-frame
 
             out-of-bounds = 0
             while ((not out-of-bounds) and ((&cur-frame 'row) != &row))
@@ -224,15 +224,15 @@ define-class Flame-Graph
                     &child = ((&cur-frame 'children) label)
                     if ((&col >= (&child 'col)) and (&col < ((&child 'col) + (&child 'width))))
                         matching-label = label
-                    unref &child
+                    unbind &child
 
                 if (matching-label == nil)
                     out-of-bounds = 1
                 else
                     &new-frame = ((&cur-frame 'children) matching-label)
-                    unref &cur-frame
+                    unbind &cur-frame
                     &cur-frame = &new-frame
-                    unref &new-frame
+                    unbind &new-frame
 
             if (not out-of-bounds)
                 if (&color == nil)
@@ -264,9 +264,9 @@ define-class Flame-Graph
             foreach zframe (split (&self 'zoom-stack) ";")
                 if (zframe in (&base 'children))
                     &new-base = ((&base 'children) zframe)
-                    unref &base
+                    unbind &base
                     &base = &new-base
-                    unref &new-base
+                    unbind &new-base
 
             &base @ ('paint ((&view 'height) + &vert-offset) 1 (&view 'width))
 
@@ -283,7 +283,7 @@ define-class Flame-Graph
 
             &self @ ('paint &view (&view 'vert-offset) (&view 'horiz-offset))
 
-            @term:flush
+            (@term:flush)
 
     'mouse-click :
         fn (&self &view &row &col)
@@ -292,9 +292,9 @@ define-class Flame-Graph
             foreach zframe (split (&self 'zoom-stack) ";")
                 if (zframe in (&cur-frame 'children))
                     &new-cur-frame = ((&cur-frame 'children) zframe)
-                    unref &cur-frame
+                    unbind &cur-frame
                     &cur-frame = &new-cur-frame
-                    unref &new-cur-frame
+                    unbind &new-cur-frame
 
             new-zstack = (&self 'zoom-stack)
 
@@ -305,16 +305,16 @@ define-class Flame-Graph
                     &child = ((&cur-frame 'children) label)
                     if ((&col >= (&child 'col)) and (&col < ((&child 'col) + (&child 'width))))
                         matching-label = label
-                    unref &child
+                    unbind &child
 
                 if (matching-label == nil)
                     out-of-bounds = 1
                 else
                     new-zstack = (fmt "%;%" (move new-zstack) matching-label)
                     &new-frame = ((&cur-frame 'children) matching-label)
-                    unref &cur-frame
+                    unbind &cur-frame
                     &cur-frame = &new-frame
-                    unref &new-frame
+                    unbind &new-frame
 
             if (not out-of-bounds)
                 if (startswith new-zstack ";")
@@ -331,7 +331,7 @@ define-class Flame-Graph
 
                 &self @ ('paint &view (&view 'vert-offset) (&view 'horiz-offset))
 
-                @term:flush
+                (@term:flush)
 
     'mouse-over :
         fn (&self &view &row &col)
@@ -347,4 +347,4 @@ define-class Flame-Graph
                 (&self 'last-sel-row) = 0
                 (&self 'last-sel-col) = 0
 
-            @term:flush
+            (@term:flush)

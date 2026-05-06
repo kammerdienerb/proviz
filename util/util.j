@@ -28,4 +28,4 @@ ilog =
 die =
     fn (&format-string ...)
         log 'error (log-fmt &format-string ...)
-        @term:exit
+        (@term:exit)

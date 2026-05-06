@@ -22,7 +22,7 @@ define-class View
 
     'clear :
         fn (&self)
-            @term:clear
+            (@term:clear)
 
     'status-text :
         fn (&self &text)
@@ -51,7 +51,7 @@ define-class View
             foreach &pair by-layer
                 widget-name = (&pair 0)
                 ((&self 'widgets) widget-name) @ ('paint &self (&self 'vert-offset) (&self 'horiz-offset))
-            @term:flush
+            (@term:flush)
 
     'loading-bar-init :
         fn (&self &label)
@@ -65,13 +65,13 @@ define-class View
                 @term:set-cell-fg   1 col 0x0000ff
                 @term:set-cell-char 1 col char
                 col += 1
-            @term:flush
+            (@term:flush)
 
     'loading-bar-fini :
         fn (&self)
             (&self 'loading-bar-label) = ""
             @term:clear-row 1
-            @term:flush
+            (@term:flush)
 
     'loading-bar-update :
         fn (&self &ratio)
@@ -87,7 +87,7 @@ define-class View
                 @term:set-cell-char 1 col char
                 col += 1
 
-            @term:flush
+            (@term:flush)
 
     'on-key :
         fn (&self &key)
@@ -106,8 +106,8 @@ define-class View
 set-view =
     fn (&view-name)
         if (is-bound &current-view)
-            @term:clear
-            unref &current-view
+            (@term:clear)
+            unbind &current-view
         if (not (&view-name in views))
             die "no view named %" &view-name
         &current-view := (views &view-name)

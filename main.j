@@ -37,19 +37,19 @@ profile := nil
 
         match (options 'COMMAND)
             "report"
-                (report-command profile)
+                report-command profile
 
             "flamescope"
-                (flamescope-command profile)
+                flamescope-command profile
 
             "thiefscope"
-                (thiefscope-command profile)
+                thiefscope-command profile
 
             "flamegraph"
-                (flamegraph-command profile)
+                flamegraph-command profile
 
             "plot"
-                (plot-command profile)
+                plot-command profile
 
         &current-view @ ('paint)
 

@@ -11,7 +11,7 @@ define-class Report-Sub-FlameGraph-View-Input-Handler
                         &widget = ((&view 'widgets) widget-name)
                         if ((&widget '__class__) == (' Flame-Graph))
                             &widget @ ('reset-zoom &view)
-                        unref &widget
+                        unbind &widget
                 "up"
                     ++ (&view 'vert-offset)
                     &view @ ('paint)
@@ -46,7 +46,7 @@ define-class Report-Sub-FlameGraph-View-Input-Handler
                         response = (&widget @ ('mouse-click &view &row &col))
                     elif (&action == 'over)
                         response = (&widget @ ('mouse-over &view &row &col))
-                    unref &widget
+                    unbind &widget
 
 
 define-class Report-View-Input-Handler
@@ -56,7 +56,7 @@ define-class Report-View-Input-Handler
 
             match &key
                 "q"
-                    @term:exit
+                    (@term:exit)
                 "up"
                     (&view 'vert-offset) += (&view 'height)
                     (&view 'vert-offset) = (min (&view 'vert-offset) 0)
@@ -137,10 +137,10 @@ define-class Report-View-Input-Handler
                                     &other-widget = ((&view 'widgets) other-widget-name)
                                     if ((&other-widget 'start-row) > (&widget 'start-row))
                                         (&other-widget 'start-row) -= ((&widget 'height) + 1)
-                                    unref &other-widget
+                                    unbind &other-widget
 
                             report-widget-offset -= ((&widget 'height) + 1)
-                            unref &widget
+                            unbind &widget
                             (&view 'widgets) -> name
                             &view @ ('paint)
 
@@ -167,7 +167,7 @@ define-class Report-View-Input-Handler
                                     &selection-widget = ((&view 'widgets) selection-widget-name)
                                     if ('reset-selection in ((&selection-widget '__class__)))
                                         &selection-widget @ ('reset-selection &view)
-                                    unref &selection-widget
+                                    unbind &selection-widget
 
                                 views <-
                                     "flamegraph" :
@@ -183,7 +183,7 @@ define-class Report-View-Input-Handler
 
                                 &current-view @ ('paint)
 
-                        unref &widget
+                        unbind &widget
 
                     if (range-hover-widget-name != nil)
                         range = (((&view 'widgets) range-hover-widget-name) @ ('get-selected-range))
@@ -195,10 +195,10 @@ define-class Report-View-Input-Handler
                             if ((widget-name != range-hover-widget-name) and ('set-mirror-range in ((&widget '__class__))))
                                 &widget @ ('set-mirror-range &view range)
                                 did-paint-other-range = 1
-                            unref &widget
+                            unbind &widget
 
                         if did-paint-other-range
-                            @term:flush
+                            (@term:flush)
 
 report-command =
     fn (&profile)

@@ -27,7 +27,7 @@ list-cmds :=
         "plot"
         "flamegraph"
         "flamescope"
-        "thiefscope"
+#         "thiefscope"
 
 options := (object)
 foreach name options-def
@@ -90,7 +90,7 @@ parse-cmdline-options =
             if (startswith arg "-")
                 if (arg == "--help")
                     print (usage)
-                    @term:exit
+                    (@term:exit)
 
                 if (not (arg in arg-map))
                     die "unknown option '%'\n\n%" arg (usage)
