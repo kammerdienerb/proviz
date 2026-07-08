@@ -244,7 +244,7 @@ define-class Flame-Graph
 
                 &cur-frame @ ('paint (&cur-frame 'row) (&cur-frame 'col) (&cur-frame 'width))
 
-                &view @ ('status-text (fmt "Frame: % Samples: %" (&cur-frame 'label) (&cur-frame 'count)))
+                &view @ ('status-text (fmt "Frame: % Samples: % (%\%)" (&cur-frame 'label) (&cur-frame 'count) (num-fmt ".2f" (100.0 * ((float (&cur-frame 'count)) /? ((&self 'base) 'count))))))
 
             not out-of-bounds
 
